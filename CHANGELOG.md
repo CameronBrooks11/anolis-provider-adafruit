@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-03
+
 ### Added
 
 - The provider, built on the Python provider SDK and Adafruit's CircuitPython
@@ -16,3 +18,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A frozen single-file release binary for x86_64 and arm64, laid out for anolis
   `install.sh`, with the config schema assets the Workbench reads.
 - `scripts/cold_start.py`, which measures start-up time on the target.
+
+[Unreleased]: https://github.com/CameronBrooks11/anolis-provider-adafruit/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/CameronBrooks11/anolis-provider-adafruit/releases/tag/v0.1.0
