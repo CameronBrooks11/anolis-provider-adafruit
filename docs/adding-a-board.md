@@ -22,6 +22,28 @@ worked example where it has one, and test that the driver's output matches the
 datasheet (see `tests/test_mock.py`). A fake the driver accepts is evidence the
 model is right; one written to match the provider's own code is not.
 
+## Boards with outputs
+
+A board that drives anything (a motor, a relay, a heater) has three more rules,
+from the runtime's safety contract:
+
+- **Drive the safe state when the board connects.** The constructor runs at
+  start-up and again when a lost board answers, and leaves every output safe.
+  Name the safe state in the module docstring.
+- **Give every `ACTUATE` function a required numeric argument for which 0 is
+  safe and in range.** The runtime's zero rung (`safety.safe_state.zero_is_safe`)
+  calls each actuating function with its required numeric arguments set to 0,
+  and counts any function it cannot do that for as a failure, so the software
+  stop then reports `safe_state_achieved: false`. That rules out a function with
+  no arguments, a required boolean or string, and a channel-index argument (0 is
+  not a channel). Use one function per output instead, as `motor_hat` does.
+- **Read outputs back from the chip,** not from what the driver was last told,
+  so a signal shows what the hardware is doing. A register pattern the provider
+  never writes reads with quality `UNKNOWN`.
+
+Say in the module whether the board has a command watchdog. Most Adafruit
+boards do not, and then the outputs hold their last value if the provider stops.
+
 ## Before opening a PR
 
 - Add the board to `config/conformance.yaml`, so the harness covers it.

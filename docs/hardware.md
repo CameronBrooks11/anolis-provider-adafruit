@@ -15,6 +15,49 @@ board for the Pi header:
 
 Boards daisy-chain on the same cable run: each needs its own address on the bus.
 
+## The DC & Stepper Motor HAT
+
+The HAT sits on the Pi's 40-pin header and talks I2C on the same pins, so it
+shares bus 1 with any STEMMA QT boards. The current revision has its 2x20
+header soldered on, so nothing stacks above it: to add STEMMA QT boards, fit a
+Qwiic/STEMMA QT SHIM or a stacking header between the Pi and the HAT and plug
+the sensor cable into that.
+
+- **Motor power is separate.** The HAT drives motors from its own supply, on the
+  polarity-protected 2-pin terminal (Adafruit: 4.5 to 13.5 V DC), not from the
+  Pi. Size the supply for the motors' stall current; the TB6612 drivers are
+  rated 1.2 A per bridge, with peaks of 3 A for about 20 ms. Leave the Pi
+  powered on its own USB-C supply.
+- **Terminals:** M1 to M4, each one DC motor. A motor that turns the wrong way
+  for a positive throttle: swap its two wires.
+- **Address:** `0x60` from the factory. Bridging the A0 to A4 jumpers adds 1, 2,
+  4, 8 or 16. Avoid `0x70`, which every PCA9685
+  also answers as its All Call address; the config refuses it.
+- **Check it:** `i2cdetect -y 1` shows `60` and `70` with one HAT fitted.
+
+The provider brakes all four terminals when it connects. Before the first run,
+check that each motor can turn freely and that nothing is attached that would
+move when it spins.
+
+### Bench check of the software stop
+
+With the runtime config's `safety.safe_state.zero_is_safe: true`, and a motor on
+M1:
+
+```sh
+TOKEN=...   # from /etc/anolis/runtime.env when auth is on
+H="Authorization: Bearer $TOKEN"
+curl -s -H "$H" http://127.0.0.1:8080/v0/runtime/status | jq .startup_safe_state
+curl -s -H "$H" -X POST http://127.0.0.1:8080/v0/call -H "Content-Type: application/json" \
+  -d '{"provider_id":"adafruit0","device_id":"drive0","function_id":1,"args":{"throttle":{"type":"double","double":0.3}}}'
+curl -s -H "$H" -X POST http://127.0.0.1:8080/v0/estop | jq .safe_state_achieved
+curl -s -H "$H" "http://127.0.0.1:8080/v0/state/adafruit0/drive0?signal_id=motor1_throttle" | jq '.values[0].value'
+curl -s -H "$H" -X POST http://127.0.0.1:8080/v0/estop/clear
+```
+
+The motor should spin at the call, stop at the stop, and read back 0. Function
+ids follow the terminals: `set_motor1_throttle` is 1, up to 4.
+
 ## Preparing the host
 
 On Raspberry Pi OS:

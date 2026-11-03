@@ -34,12 +34,18 @@ class RegisterChip:
         self._pointer = data[0]
         for byte in data[1:]:
             self.on_write(self._pointer, byte)
-            self._pointer = (self._pointer + 1) & 0xFF
+            self._pointer = self.next_register(self._pointer)
 
     def read(self, length: int) -> bytes:
-        out = bytes(self.registers[(self._pointer + i) & 0xFF] for i in range(length))
-        self._pointer = (self._pointer + length) & 0xFF
-        return out
+        out = bytearray()
+        for _ in range(length):
+            out.append(self.registers[self._pointer])
+            self._pointer = self.next_register(self._pointer)
+        return bytes(out)
+
+    def next_register(self, register: int) -> int:
+        """Where the pointer goes after a byte is transferred."""
+        return (register + 1) & 0xFF
 
     def on_write(self, register: int, value: int) -> None:
         self.registers[register] = value
@@ -76,6 +82,45 @@ class FakeBME280(RegisterChip):
             return
         super().on_write(register, value)
         # The status register (0xF3) stays 0: a measurement is always complete.
+
+
+class FakePCA9685(RegisterChip):
+    """A PCA9685 16-channel PWM controller, at its power-on register values
+    (NXP datasheet rev. 4, section 7.3): asleep, every output fully off.
+
+    Modelled because a driver can get each of them wrong: the pointer advances
+    only with MODE1.AI set, PRE_SCALE takes a write only while MODE1.SLEEP is
+    set, and RESTART clears itself."""
+
+    MODE1, MODE2, LED0, PRE_SCALE = 0x00, 0x01, 0x06, 0xFE
+    AI, SLEEP, RESTART = 0x20, 0x10, 0x80
+
+    def __init__(self) -> None:
+        super().__init__()
+        r = self.registers
+        r[self.MODE1] = 0x11  # SLEEP | ALLCALL
+        r[self.MODE2] = 0x04  # OUTDRV
+        for channel in range(16):
+            r[self.LED0 + 4 * channel + 3] = 0x10  # LEDn_OFF_H: full off
+        r[self.PRE_SCALE] = 0x1E  # 200 Hz
+
+    def next_register(self, register: int) -> int:
+        if self.registers[self.MODE1] & self.AI:
+            return super().next_register(register)
+        return register
+
+    def on_write(self, register: int, value: int) -> None:
+        if register == self.PRE_SCALE and not self.registers[self.MODE1] & self.SLEEP:
+            return
+        if register == self.MODE1:
+            value &= ~self.RESTART
+        super().on_write(register, value)
+
+    def duty(self, channel: int) -> tuple[int, int]:
+        """A channel's (LEDn_ON, LEDn_OFF) words, as the driver writes them."""
+        base = self.LED0 + 4 * channel
+        on, off = struct.unpack("<HH", self.registers[base : base + 4])
+        return on, off
 
 
 class FakeI2C:

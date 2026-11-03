@@ -10,6 +10,8 @@ dependencies = [
     "anolis-provider-sdk @ git+https://github.com/anolishq/anolis-provider-sdk-python@84cfe6c188d301766833c403765ba14d8d80b44b",
     # Adafruit's drivers. They run on Linux through Adafruit Blinka, which they depend on.
     "adafruit-circuitpython-bme280>=2.6,<3",
+    "adafruit-circuitpython-motor>=3.5,<4",
+    "adafruit-circuitpython-pca9685>=3.4,<4",
     "adafruit-extended-bus>=1.0,<2",
 ]
 
@@ -54,7 +56,7 @@ files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
 # Generated protobuf modules and the CircuitPython drivers ship without type stubs.
-module = ["anolis.*", "adafruit_bme280.*", "adafruit_extended_bus", "adafruit_bus_device.*"]
+module = ["anolis.*", "adafruit_bme280.*", "adafruit_extended_bus", "adafruit_bus_device.*", "adafruit_motor.*", "adafruit_pca9685"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

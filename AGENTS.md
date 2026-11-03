@@ -18,6 +18,8 @@ Per-repo conventions for coding agents.
 - **Mock mode runs the real driver.** The fake bus emulates the chip's registers; never stub the driver itself.
 - **Only I2C transfer errors mean a board is unreachable** (`_BUS_ERRNOS` in `provider.py`). Any other exception is a
   provider fault and must surface as one.
+- **Outputs: safe at connect, zero-rung drivable, read back from the chip.** See `docs/adding-a-board.md`, "Boards with
+  outputs".
 - **Only what the config names.** The provider opens one I2C bus and the configured addresses. It does not scan, and
   does not expose GPIO or SPI.
 

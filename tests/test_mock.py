@@ -6,7 +6,7 @@ from __future__ import annotations
 import adafruit_bme280.basic as driver
 import pytest
 
-from anolis_provider_adafruit.mock import FakeBME280, FakeI2C
+from anolis_provider_adafruit.mock import FakeBME280, FakeI2C, FakePCA9685
 
 
 def test_driver_reads_the_datasheet_example_through_the_fake_bus() -> None:
@@ -49,3 +49,34 @@ def test_a_write_stores_bytes_from_the_pointer() -> None:
     chip = FakeBME280()
     chip.write(bytes([0xF4, 0x27, 0xA0]))
     assert chip.registers[0xF4:0xF6] == bytes([0x27, 0xA0])
+
+
+def test_the_pca9685_powers_on_asleep_with_every_output_off() -> None:
+    chip = FakePCA9685()
+    assert chip.registers[FakePCA9685.MODE1] & FakePCA9685.SLEEP
+    assert all(chip.duty(channel) == (0, 0x1000) for channel in range(16))
+
+
+def test_the_pca9685_pointer_stays_put_without_auto_increment() -> None:
+    chip = FakePCA9685()
+    chip.write(bytes([FakePCA9685.MODE1, 0x00]))  # awake, AI clear
+    chip.write(bytes([0x06, 0x11, 0x22]))
+    assert chip.registers[0x06:0x08] == bytes([0x22, 0x00])
+    chip.write(bytes([FakePCA9685.MODE1, FakePCA9685.AI]))
+    chip.write(bytes([0x06, 0x11, 0x22]))
+    assert chip.registers[0x06:0x08] == bytes([0x11, 0x22])
+
+
+def test_the_pca9685_takes_a_prescale_only_while_asleep() -> None:
+    chip = FakePCA9685()
+    chip.write(bytes([FakePCA9685.PRE_SCALE, 0x03]))
+    assert chip.registers[FakePCA9685.PRE_SCALE] == 0x03
+    chip.write(bytes([FakePCA9685.MODE1, 0x00]))
+    chip.write(bytes([FakePCA9685.PRE_SCALE, 0x79]))
+    assert chip.registers[FakePCA9685.PRE_SCALE] == 0x03
+
+
+def test_the_pca9685_restart_bit_clears_itself() -> None:
+    chip = FakePCA9685()
+    chip.write(bytes([FakePCA9685.MODE1, FakePCA9685.RESTART | FakePCA9685.AI]))
+    assert chip.registers[FakePCA9685.MODE1] == FakePCA9685.AI
