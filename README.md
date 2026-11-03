@@ -8,9 +8,9 @@ declaration plus a call into the driver Adafruit already maintains. On Linux the
 drivers run through [Adafruit Blinka](https://github.com/adafruit/Adafruit_Blinka),
 which they depend on.
 
-> **Status: v0.1.0, in development.** One board so far. It passes the
-> anolis-protocol 1.10.0 conformance harness at level 2 in mock mode, from source
-> and as the frozen release binary, on x86_64 and arm64.
+> **Status: v0.1.0.** One board so far. It passes the anolis-protocol 1.10.0
+> conformance harness at level 2 in mock mode, from source and as the frozen
+> release binary, on x86_64 and arm64. Not yet verified on a Raspberry Pi.
 
 ## Supported boards
 
