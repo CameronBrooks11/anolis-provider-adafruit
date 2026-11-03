@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The Adafruit DC & Stepper Motor HAT (`motor_hat`): four DC motor terminals,
+  each set by `set_motor<n>_throttle` and read back from the board's PWM
+  controller. The board brakes every terminal when it connects, and throttle 0
+  is its safe state, so the runtime's `zero_is_safe` rung can stop it.
+- Mock mode models the PCA9685 PWM controller, including auto-increment,
+  sleep-only prescale writes and the self-clearing restart bit.
+
 ## [0.1.0] - 2026-11-03
 
 ### Added

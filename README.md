@@ -8,15 +8,17 @@ declaration plus a call into the driver Adafruit already maintains. On Linux the
 drivers run through [Adafruit Blinka](https://github.com/adafruit/Adafruit_Blinka),
 which they depend on.
 
-> **Status: v0.1.0.** One board so far. It passes the anolis-protocol 1.10.0
-> conformance harness at level 2 in mock mode, from source and as the frozen
-> release binary, on x86_64 and arm64. Not yet verified on a Raspberry Pi.
+> **Status: v0.1.0.** It passes the anolis-protocol 1.10.0 conformance harness
+> at level 2 in mock mode, from source and as the frozen release binary, on
+> x86_64 and arm64. Not yet verified on a Raspberry Pi. The Motor HAT is
+> unreleased.
 
 ## Supported boards
 
 | `type` | Board | Driver | Addresses |
 | --- | --- | --- | --- |
 | `bme280` | BME280 temperature, humidity and pressure (STEMMA QT) | `adafruit-circuitpython-bme280` | `0x77` (default), `0x76` |
+| `motor_hat` | DC & Stepper Motor HAT for Raspberry Pi: four DC motors | `adafruit-circuitpython-pca9685`, `adafruit-circuitpython-motor` | `0x60` (default) to `0x7F`, except `0x70` |
 
 All boards share one Linux I2C bus (`i2c_bus`, default 1: the Raspberry Pi
 header, and any STEMMA QT or Qwiic adapter on it).
@@ -32,6 +34,8 @@ devices:
   - id: env1
     type: bme280
     address: 0x76
+  - id: drive0
+    type: motor_hat
 ```
 
 `mock: true` replaces the bus with a simulated one holding a register model of
@@ -41,6 +45,29 @@ schema: `anolis-provider-adafruit --config-schema`.
 A board that does not answer is listed anyway and reported `UNREACHABLE`; reads
 and calls fail with `UNAVAILABLE` and retry the board each time, so reseating a
 cable recovers it without a restart.
+
+## Motors and the software stop
+
+`motor_hat` has one function per terminal, `set_motor<n>_throttle(throttle)`
+with `throttle` from -1 to 1, where 0 brakes. The board brakes all four
+terminals when it connects: at start-up, and when it answers again after being
+lost. So a supervised restart of the provider stops the motors, whatever
+`safety.on_startup` says; there is no setting to leave them running. Each
+`motor<n>_throttle` signal is read back from the board's PWM controller.
+
+Throttle 0 is the safe state, so the runtime's zero rung drives it:
+
+```yaml
+safety:
+  safe_state:
+    zero_is_safe: true
+```
+
+With that, the startup safe state and `POST /v0/estop` brake every motor. This
+is a software stop, not an emergency stop: the board has no command watchdog,
+so if the provider or the runtime stops, the motors keep their last throttle.
+Cut the motor supply for an emergency stop. See the runtime's
+[safety guide](https://github.com/anolishq/anolis/blob/main/docs/safety.md).
 
 ## Install
 
