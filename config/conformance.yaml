@@ -1,0 +1,10 @@
+# Mock-mode config for the conformance harness and CI: two BME280s on a
+# simulated bus, at both of the board's addresses. No hardware needed.
+mock: true
+devices:
+  - id: env0
+    type: bme280
+    label: Environment sensor 0
+  - id: env1
+    type: bme280
+    address: 0x76
