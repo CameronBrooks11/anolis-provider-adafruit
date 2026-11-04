@@ -282,3 +282,45 @@ def test_a_write_that_fails_partway_never_leaves_the_bridge_driving_harder_or_ba
         assert any(left == pytest.approx(a, abs=1 / 4096) for a in allowed), (
             f"{start} -> {target}, write {k} of {writes} failed: bridge left driving at {left:+.4f}"
         )
+
+
+def test_a_hat_that_restarted_on_its_own_is_set_up_again_and_braked() -> None:
+    p = started()
+    d = p.devices()[0]
+    pca = chip(p)
+    throttle(p, 1, 0.5)
+    pca.power_cycle()  # asleep, outputs off, auto-increment off, All Call on
+    assert p.read(d, SIGNALS) == dict.fromkeys(SIGNALS, 0.0)
+    mode1 = pca.registers[FakePCA9685.MODE1]
+    assert not mode1 & (FakePCA9685.SLEEP | FakePCA9685.ALLCALL)
+    assert mode1 & FakePCA9685.AI
+    for enable, forward, reverse in CHANNELS.values():
+        assert pca.duty(enable) == pca.duty(forward) == pca.duty(reverse) == FULL_ON
+    assert p.device_health(d) is None
+
+
+def test_a_command_to_a_hat_that_restarted_on_its_own_takes_effect() -> None:
+    p = started()
+    throttle(p, 1, 0.5)
+    chip(p).power_cycle()
+    throttle(p, 1, 0.5)
+    assert p.read(p.devices()[0], ["motor1_throttle"])["motor1_throttle"] == pytest.approx(0.5, abs=1 / 4096)
+
+
+def test_an_shtc3_listed_before_the_hat_connects_after_it_clears_all_call() -> None:
+    p = started({"id": "rh", "type": "shtc3"}, {"id": "m", "type": "motor_hat"})
+    rh, m = p.devices()
+    assert p.device_health(rh) is None
+    assert p.device_health(m) is None
+    assert set(p.read(rh, ["temperature", "relative_humidity"])) == {"temperature", "relative_humidity"}
+
+
+def test_a_hat_restart_turns_all_call_off_again() -> None:
+    p = started({"id": "m", "type": "motor_hat"}, {"id": "rh", "type": "shtc3"})
+    m, rh = p.devices()
+    pca = chip(p)
+    pca.power_cycle()
+    assert pca.all_call_address() == 0x70
+    p.read(m, ["motor1_throttle"])
+    assert pca.all_call_address() is None
+    assert p.read(rh, ["temperature"])["temperature"] == pytest.approx(22.5, abs=0.02)

@@ -65,6 +65,14 @@ SHT41 and SHT45 (`sht4x`) and the SHTC3 (`shtc3`).
 
 - **Address:** the SHT4x boards answer at `0x44`, the SHTC3 at `0x70`. Neither
   has an address jumper, so one of each per bus.
+- **An SHTC3 and a PCA9685:** `0x70` is also the All Call address every
+  PCA9685 answers from power on until it is reset, so traffic for the SHTC3
+  reaches the PWM controller too, and reads come back corrupted. The provider
+  connects every `motor_hat` before the other boards, whatever the config
+  order, and its reset turns All Call off; it turns it off again when it finds
+  the HAT restarted. A PCA9685 the provider does not initialise (a HAT or PWM
+  board on the bus but not in the config, or one another program drives)
+  keeps answering `0x70`: an SHTC3 cannot share a bus with it.
 - **Check it:** `i2cdetect -y 1` shows `44` or `70`, and the readings come back
   near the room's: about 20 to 25 C and 30 to 60 %.
 - **Heater:** the SHT4x has a built-in heater for driving off condensation. The

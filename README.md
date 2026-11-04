@@ -25,6 +25,13 @@ which they depend on.
 All boards share one Linux I2C bus (`i2c_bus`, default 1: the Raspberry Pi
 header, and any STEMMA QT or Qwiic adapter on it).
 
+The SHTC3's fixed address, `0x70`, is also the All Call address of every
+PCA9685 PWM controller (the Motor HAT's) until it is reset. The provider sets
+up each `motor_hat` before the other boards, which turns All Call off, so an
+SHTC3 and a configured Motor HAT share a bus. An SHTC3 cannot share a bus with
+a PCA9685 the provider does not initialise. See
+[docs/hardware.md](docs/hardware.md#the-sht4x-and-shtc3).
+
 ## Config
 
 ```yaml

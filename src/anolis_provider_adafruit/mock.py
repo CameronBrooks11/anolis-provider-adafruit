@@ -92,17 +92,31 @@ class FakePCA9685(RegisterChip):
     only with MODE1.AI set, PRE_SCALE takes a write only while MODE1.SLEEP is
     set, and RESTART clears itself."""
 
-    MODE1, MODE2, LED0, PRE_SCALE = 0x00, 0x01, 0x06, 0xFE
-    AI, SLEEP, RESTART = 0x20, 0x10, 0x80
+    MODE1, MODE2, ALLCALLADR, LED0, PRE_SCALE = 0x00, 0x01, 0x05, 0x06, 0xFE
+    AI, SLEEP, RESTART, ALLCALL = 0x20, 0x10, 0x80, 0x01
 
     def __init__(self) -> None:
         super().__init__()
+        self.power_cycle()
+
+    def power_cycle(self) -> None:
+        """Every register at its power-on value, as at start-up or after the
+        board restarts on a glitch in its logic supply."""
         r = self.registers
-        r[self.MODE1] = 0x11  # SLEEP | ALLCALL
+        r[:] = bytes(256)
+        self._pointer = 0
+        r[self.MODE1] = self.SLEEP | self.ALLCALL
         r[self.MODE2] = 0x04  # OUTDRV
+        r[self.ALLCALLADR] = 0xE0  # 0x70, as an 8-bit write address
         for channel in range(16):
             r[self.LED0 + 4 * channel + 3] = 0x10  # LEDn_OFF_H: full off
         r[self.PRE_SCALE] = 0x1E  # 200 Hz
+
+    def all_call_address(self) -> int | None:
+        """The 7-bit All Call address the chip also answers, while MODE1.ALLCALL is set."""
+        if self.registers[self.MODE1] & self.ALLCALL:
+            return self.registers[self.ALLCALLADR] >> 1
+        return None
 
     def next_register(self, register: int) -> int:
         if self.registers[self.MODE1] & self.AI:
@@ -226,7 +240,12 @@ class FakeSHTC3(_SensirionHumidity):
 
 class FakeI2C:
     """A bus with fake chips at fixed addresses. An address with no chip raises
-    OSError, as Linux reports a NACK, so a driver's probe fails as on hardware."""
+    OSError, as Linux reports a NACK, so a driver's probe fails as on hardware.
+
+    A PCA9685 with All Call enabled (its power-on state) also answers its All
+    Call address, 0x70, as on hardware: it takes every write sent there, and a
+    read there gets the wired AND of every chip that answers it. Only a
+    transfer that no chip acknowledges fails."""
 
     def __init__(self, chips: Mapping[int, FakeChip]) -> None:
         self.chips = dict(chips)
@@ -237,13 +256,15 @@ class FakeI2C:
         # transfer that breaks partway through a sequence of writes.
         self.fail_write: int | None = None
 
-    def _chip(self, address: int) -> FakeChip:
+    def _chips(self, address: int) -> list[FakeChip]:
         if self.fail:
             raise OSError(5, "Input/output error")
-        chip = self.chips.get(address)
-        if chip is None:
+        own = self.chips.get(address)
+        chips = [] if own is None else [own]
+        chips += [c for c in self.chips.values() if isinstance(c, FakePCA9685) and c.all_call_address() == address]
+        if not chips:
             raise OSError(121, "Remote I/O error")
-        return chip
+        return chips
 
     def try_lock(self) -> bool:
         if self._locked:
@@ -261,11 +282,32 @@ class FakeI2C:
         index, self.writes = self.writes, self.writes + 1
         if index == self.fail_write:
             raise OSError(5, "Input/output error")
-        self._chip(address).write(bytes(buffer[start:end]))
+        data = bytes(buffer[start:end])
+        chips = self._chips(address)
+        refused: list[OSError] = []
+        for chip in chips:
+            try:
+                chip.write(data)
+            except OSError as err:
+                refused.append(err)
+        if len(refused) == len(chips):
+            raise refused[0]
 
     def readfrom_into(self, address: int, buffer: bytearray, *, start: int = 0, end: int | None = None) -> None:
         end = len(buffer) if end is None else end
-        buffer[start:end] = self._chip(address).read(end - start)
+        replies: list[bytes] = []
+        refused: list[OSError] = []
+        for chip in self._chips(address):
+            try:
+                replies.append(chip.read(end - start))
+            except OSError as err:
+                refused.append(err)
+        if not replies:
+            raise refused[0]
+        wired_and = replies[0]
+        for reply in replies[1:]:
+            wired_and = bytes(a & b for a, b in zip(wired_and, reply, strict=True))
+        buffer[start:end] = wired_and
 
     def writeto_then_readfrom(
         self,

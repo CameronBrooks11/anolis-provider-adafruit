@@ -9,8 +9,20 @@ the controller's registers back rather than what was last commanded.
 
 Safe state: throttle 0, which brakes (both bridge inputs high). The board drives
 all four terminals there when it connects, at start-up and when it answers again
-after being lost. Every motor function has one required numeric argument, so the
-runtime's zero rung (`safety.safe_state.zero_is_safe`) drives each one to 0.
+after being lost, and again whenever it is found to have restarted on its own.
+Every motor function has one required numeric argument, so the runtime's zero
+rung (`safety.safe_state.zero_is_safe`) drives each one to 0.
+
+A PCA9685 that restarted on its own (a glitch on the HAT's logic supply) comes
+back asleep, with every output off and auto-increment and All Call as at power
+on. The board checks MODE1 on every read and call and connects again when it is
+not as the board left it: awake, auto-incrementing, All Call off.
+
+All Call: at power on a PCA9685 also answers 0x70, the SHTC3's fixed address,
+so until the provider has reset it, traffic for an SHTC3 reaches the HAT too.
+The provider connects every Motor HAT before the other boards, and the reset
+at connect turns All Call off. A PCA9685 the provider does not initialise keeps
+answering 0x70, so an SHTC3 cannot share a bus with one.
 
 A throttle change never passes through, or stops in, a state that drives
 harder than both the old and the new throttle, or the other way. adafruit_motor
@@ -30,6 +42,7 @@ motors keep their last throttle until the board loses power.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import Any
 
@@ -38,12 +51,16 @@ from anolis_provider_sdk import Arg, Category, DeviceType, Function, Quality, Re
 from ..mock import FakePCA9685
 from .base import DeviceDriver
 
+log = logging.getLogger(__name__)
+
 # PCA9685 channels per terminal: (TB6612 PWM enable, forward input, reverse input).
 # From adafruit_motorkit.MotorKit.motor1 .. motor4.
 CHANNELS = {1: (8, 9, 10), 2: (13, 11, 12), 3: (2, 3, 4), 4: (7, 5, 6)}
 
 PWM_FREQUENCY_HZ = 1600.0  # MotorKit's default
 FULL = 0xFFFF
+# MODE1 bits (PCA9685 datasheet rev. 4, section 7.3.1).
+MODE1_AI, MODE1_SLEEP, MODE1_ALLCALL = 0x20, 0x10, 0x01
 
 
 def _throttle_function(motor: int) -> Function:
@@ -101,11 +118,19 @@ class MotorHat(DeviceDriver):
     type = TYPE
     addresses = tuple(a for a in range(0x60, 0x80) if a != 0x70)  # 0x70 is the PCA9685 All Call address
 
+    connect_first = True  # its reset turns off All Call, which answers the SHTC3's address
+
     def __init__(self, i2c: Any, address: int) -> None:
-        from adafruit_motor.motor import DCMotor
         from adafruit_pca9685 import PCA9685
 
+        self._address = address
+        # The constructor resets the chip: MODE1 = 0, awake with All Call off.
         self._pca = PCA9685(i2c, address=address)
+        self._setup()
+
+    def _setup(self) -> None:
+        from adafruit_motor.motor import DCMotor
+
         # Also sets MODE1.AI, which every channel write after it depends on.
         self._pca.frequency = PWM_FREQUENCY_HZ
         self._motors: dict[int, Any] = {}
@@ -115,11 +140,19 @@ class MotorHat(DeviceDriver):
             dc.throttle = 0.0  # the safe state: brake
             self._motors[motor] = dc
 
+    def _check_restarted(self) -> None:
+        mode1 = self._pca.mode1_reg
+        if mode1 & (MODE1_SLEEP | MODE1_ALLCALL) or not mode1 & MODE1_AI:
+            log.warning("PCA9685 at %#04x restarted (MODE1 %#04x); braking its motors again", self._address, mode1)
+            self._pca.reset()
+            self._setup()
+
     @staticmethod
     def fake() -> FakePCA9685:
         return FakePCA9685()
 
     def read(self, signal_ids: list[str]) -> Mapping[str, Any]:
+        self._check_restarted()
         out: dict[str, Any] = {}
         for sid in signal_ids:
             motor = int(sid.removeprefix("motor").removesuffix("_throttle"))
@@ -130,6 +163,7 @@ class MotorHat(DeviceDriver):
         return out
 
     def call(self, function: Function, args: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        self._check_restarted()
         motor = int(function.name.removeprefix("set_motor").removesuffix("_throttle"))
         dc = self._motors[motor]
         start, target = dc.throttle, float(args["throttle"])
