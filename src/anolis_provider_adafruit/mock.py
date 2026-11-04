@@ -10,6 +10,7 @@ register read on.
 from __future__ import annotations
 
 import struct
+import time
 from collections.abc import Mapping
 from typing import Protocol
 
@@ -54,14 +55,46 @@ class RegisterChip:
 class FakeBME280(RegisterChip):
     """A BME280 holding the calibration and raw readings of the Bosch datasheet's
     worked example (section 8.1): 25.08 C and 1006.53 hPa through the driver's
-    compensation. The humidity calibration is a typical part's, giving about 45 %."""
+    compensation. The humidity calibration is a typical part's, giving about 45 %.
 
+    Modelled because a driver or the provider can get each of them wrong:
+
+    - Power-on (and a soft reset, 0xB6 to 0xE0) leaves the chip in sleep mode
+      with every setting 0, and the data registers at their reset values,
+      0x80000 for temperature and pressure and 0x8000 for humidity. Those
+      convert to plausible-looking numbers, so a restarted chip that nobody
+      sets up again reads wrong rather than failing.
+    - A measurement runs only outside sleep mode, and only for a quantity whose
+      oversampling is not 0 ("skipped"); a skipped one keeps its reset value.
+      The humidity setting in ctrl_hum takes effect at the next write to
+      ctrl_meas (datasheet 5.4.3). Forced mode measures once and returns to
+      sleep.
+
+    - Entering normal mode starts the first measurement, which takes up to
+      t_measure (datasheet 9.1, the maximum for the oversampling set). Until
+      it completes, the data registers keep the values they had.
+
+    Otherwise the model measures instantly, and the status register stays 0: a
+    read in normal mode returns the latest raw values set with ``set_raw``.
+    """
+
+    CHIP_ID_REG, RESET_REG = 0xD0, 0xE0
+    CTRL_HUM, CTRL_MEAS, CONFIG = 0xF2, 0xF4, 0xF5
+    DATA = 0xF7  # press_msb .. hum_lsb, 0xF7 to 0xFE
     CHIP_ID = 0x60
+    SKIPPED_TP, SKIPPED_H = 0x80000, 0x8000
 
     def __init__(self) -> None:
         super().__init__()
+        self.raw = {"temperature": 519888, "pressure": 415148, "humidity": 28000}
+        self.power_cycle()
+
+    def power_cycle(self) -> None:
+        """Every register at its power-on value, as at start-up, after a soft
+        reset, or after a brown-out."""
         r = self.registers
-        r[0xD0] = self.CHIP_ID
+        r[:] = bytes(256)
+        r[self.CHIP_ID_REG] = self.CHIP_ID
         # dig_T1..T3, dig_P1..P9 from 0x88, little-endian.
         r[0x88:0xA0] = struct.pack(
             "<HhhHhhhhhhhh", 27504, 26435, -1000, 36477, -10685, 3024, 2855, 140, -7, 15500, -14600, 6000
@@ -69,19 +102,64 @@ class FakeBME280(RegisterChip):
         r[0xA1] = 75  # dig_H1
         # dig_H2 = 362, dig_H3 = 0, dig_H4 = 313, dig_H5 = 50, dig_H6 = 30, packed as the chip packs them.
         r[0xE1:0xE8] = struct.pack("<hBbBbb", 362, 0, 313 >> 4, ((50 & 0xF) << 4) | (313 & 0xF), 50 >> 4, 30)
-        self.set_raw(temperature=519888, pressure=415148, humidity=28000)
+        self._humidity_on = False
+        self._first_due = 0.0  # when the first measurement in normal mode completes
+        self._store(self.SKIPPED_TP, self.SKIPPED_TP, self.SKIPPED_H)
 
     def set_raw(self, *, temperature: int, pressure: int, humidity: int) -> None:
-        """Raw ADC values: 20-bit temperature and pressure, 16-bit humidity."""
+        """Raw ADC values the next measurement returns: 20-bit temperature and
+        pressure, 16-bit humidity."""
+        self.raw = {"temperature": temperature, "pressure": pressure, "humidity": humidity}
+
+    def _store(self, temperature: int, pressure: int, humidity: int) -> None:
         self.registers[0xF7:0xFA] = (pressure << 4).to_bytes(3, "big")
         self.registers[0xFA:0xFD] = (temperature << 4).to_bytes(3, "big")
         self.registers[0xFD:0xFF] = humidity.to_bytes(2, "big")
 
-    def on_write(self, register: int, value: int) -> None:
-        if register == 0xE0:  # soft reset: no state to clear in the model
+    def t_measure_s(self) -> float:
+        """The longest a measurement takes at the oversampling set (datasheet 9.1)."""
+        oversampling = [0, 1, 2, 4, 8, 16, 16, 16]
+        t = oversampling[self.registers[self.CTRL_MEAS] >> 5]
+        p = oversampling[(self.registers[self.CTRL_MEAS] >> 2) & 0b111]
+        h = oversampling[self.registers[self.CTRL_HUM] & 0b111]
+        ms = 1.25 + 2.3 * t + (2.3 * p + 0.575 if p else 0) + (2.3 * h + 0.575 if h else 0)
+        return ms / 1000
+
+    def _measure(self) -> None:
+        meas = self.registers[self.CTRL_MEAS]
+        if meas & 0b11 == 0:  # sleep: the data registers hold their last values
             return
+        if time.monotonic() < self._first_due:
+            return
+        r = self.raw
+        self._store(
+            r["temperature"] if meas >> 5 else self.SKIPPED_TP,
+            r["pressure"] if (meas >> 2) & 0b111 else self.SKIPPED_TP,
+            r["humidity"] if self._humidity_on else self.SKIPPED_H,
+        )
+        if meas & 0b11 != 0b11:  # forced: one measurement, then back to sleep
+            self.registers[self.CTRL_MEAS] = meas & ~0b11
+
+    def on_write(self, register: int, value: int) -> None:
+        if register == self.RESET_REG:
+            if value == 0xB6:
+                self.power_cycle()
+            return
+        if register not in (self.CTRL_HUM, self.CTRL_MEAS, self.CONFIG):
+            return  # the id, the status, the data and the calibration are read-only
+        was_normal = self.registers[self.CTRL_MEAS] & 0b11 == 0b11
         super().on_write(register, value)
-        # The status register (0xF3) stays 0: a measurement is always complete.
+        if register == self.CTRL_MEAS:
+            self._humidity_on = bool(self.registers[self.CTRL_HUM] & 0b111)
+            if value & 0b11 == 0b11 and not was_normal:
+                self._first_due = time.monotonic() + self.t_measure_s()
+            if value & 0b11 not in (0b00, 0b11):
+                self._measure()
+
+    def read(self, length: int) -> bytes:
+        if self._pointer in (self.DATA, 0xFA, 0xFD) and self.registers[self.CTRL_MEAS] & 0b11 == 0b11:
+            self._measure()
+        return super().read(length)
 
 
 class FakePCA9685(RegisterChip):

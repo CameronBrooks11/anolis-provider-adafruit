@@ -25,7 +25,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   where the SHTC3 driver would return no value without an error.
 - Mock mode models the PCA9685 PWM controller, including auto-increment,
   sleep-only prescale writes and the self-clearing restart bit, and the
-  SHT4x and SHTC3, including the SHTC3's sleep between readings.
+  SHT4x and SHTC3, including the SHTC3's sleep between readings. The BME280
+  model now starts asleep with its data registers at their reset values, takes
+  the datasheet's measurement time for its first measurement in normal mode,
+  and can be power-cycled, and the PCA9685 model can be power-cycled and
+  answers its All Call address.
+
+### Fixed
+
+- A BME280 that restarted on its own (a brown-out between two reads) is set up
+  again on the next read, keeping its sea-level pressure. Before, the driver
+  kept the chip's old mode in Python, and the provider reported the reset-value
+  registers of the sleeping chip as good readings until it restarted. Every
+  connect now waits out the first measurement, so the first read after it is
+  not of those reset values either.
 
 ## [0.1.0] - 2026-11-03
 
