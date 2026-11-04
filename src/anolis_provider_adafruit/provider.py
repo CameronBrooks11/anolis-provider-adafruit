@@ -205,6 +205,21 @@ class AdafruitProvider(Provider):
             log.warning("%s: %s", device_id, slot.error)
         return slot.driver
 
+    def stop(self) -> None:
+        # The SDK calls this once when the session ends, however it ends. The
+        # Motor HAT has no watchdog, so this is what stops its motors when the
+        # runtime goes away. One board failing must not leave the others running.
+        for device_id, slot in self._slots.items():
+            if slot.driver is None:
+                continue
+            try:
+                slot.driver.stop()
+            except Exception as err:
+                if _not_answering(err):
+                    log.warning("%s: could not drive it safe at stop: %s", device_id, err)
+                else:
+                    log.exception("%s: could not drive it safe at stop", device_id)
+
     # ---- ADPP -----------------------------------------------------------------------
 
     def devices(self) -> Sequence[Device]:

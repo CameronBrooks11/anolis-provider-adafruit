@@ -80,10 +80,19 @@ safety:
     zero_is_safe: true
 ```
 
-With that, the startup safe state and `POST /v0/estop` brake every motor. This
-is a software stop, not an emergency stop: the board has no command watchdog,
-so if the provider or the runtime stops, the motors keep their last throttle.
-Cut the motor supply for an emergency stop. See the runtime's
+With that, the startup safe state and `POST /v0/estop` brake every motor.
+
+When the provider exits, it brakes every terminal of every Motor HAT it has
+connected, as at connect. That covers the runtime shutting down, crashing or
+closing the provider's stdin, and the provider receiving `SIGTERM`. A board that
+fails to answer then is logged and the others are still braked. The board has
+no command watchdog, so this is the only thing that stops the motors when the
+runtime goes away: if the provider is killed with `SIGKILL`, or its Python
+process crashes, nothing brakes them and they keep their last throttle until
+the motor supply is cut.
+
+This is a software stop, not an emergency stop. Cut the motor supply for an
+emergency stop. See the runtime's
 [safety guide](https://github.com/anolishq/anolis/blob/main/docs/safety.md).
 
 ## Install

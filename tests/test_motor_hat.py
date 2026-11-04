@@ -5,11 +5,14 @@ independent of the driver's read path."""
 
 from __future__ import annotations
 
+import io
+import struct
 from pathlib import Path
 from typing import Any
 
 import pytest
-from anolis_provider_sdk import Category, DeviceState, ProviderError, Quality, Reading, StatusCode, ValueType
+from anolis.deviceprovider.v1 import envelope_pb2, status_pb2, value_pb2
+from anolis_provider_sdk import Category, DeviceState, ProviderError, Quality, Reading, StatusCode, ValueType, serve
 from anolis_provider_sdk.cli import ConfigError, load_config
 
 from anolis_provider_adafruit.devices.motor_hat import CHANNELS, TYPE, MotorHat, throttle_from_duty
@@ -324,3 +327,82 @@ def test_a_hat_restart_turns_all_call_off_again() -> None:
     p.read(m, ["motor1_throttle"])
     assert pca.all_call_address() is None
     assert p.read(rh, ["temperature"])["temperature"] == pytest.approx(22.5, abs=0.02)
+
+
+def request_frame(request: Any) -> bytes:
+    body = bytes(request.SerializeToString())
+    return struct.pack("<I", len(body)) + body
+
+
+def response_frames(out: bytes) -> list[Any]:
+    responses, i = [], 0
+    while i < len(out):
+        (length,) = struct.unpack_from("<I", out, i)
+        responses.append(envelope_pb2.Response.FromString(out[i + 4 : i + 4 + length]))
+        i += 4 + length
+    return responses
+
+
+def test_the_end_of_the_session_brakes_every_motor() -> None:
+    # The runtime closing the pipe (EOF) ends serve(), and the SDK calls stop().
+    provider = AdafruitProvider({"mock": True, "devices": [{"id": "m", "type": "motor_hat"}]})
+    hello = envelope_pb2.Request(request_id=1)
+    hello.hello.protocol_version = "v1"
+    run = envelope_pb2.Request(request_id=2)
+    run.call.device_id = "m"
+    run.call.function_id = 1  # set_motor1_throttle
+    run.call.args["throttle"].CopyFrom(value_pb2.Value(type=value_pb2.VALUE_TYPE_DOUBLE, double_value=0.5))
+    read = envelope_pb2.Request(request_id=3)
+    read.read_signals.device_id = "m"
+    read.read_signals.signal_ids.append("motor1_throttle")
+    stdin = io.BytesIO(b"".join(request_frame(r) for r in (hello, run, read)))
+    stdout = io.BytesIO()
+    assert serve(provider, stdin, stdout) == 0
+    replies = response_frames(stdout.getvalue())
+    assert [r.status.code for r in replies] == [status_pb2.Status.CODE_OK] * 3
+    assert replies[2].read_signals.values[0].value.double_value == pytest.approx(0.5, abs=1 / 4096)
+    pca = chip(provider)
+    for enable, forward, reverse in CHANNELS.values():
+        assert pca.duty(enable) == pca.duty(forward) == pca.duty(reverse) == FULL_ON
+
+
+def test_a_bus_error_at_stop_is_logged_and_the_other_boards_still_brake(caplog: pytest.LogCaptureFixture) -> None:
+    p = started({"id": "m0", "type": "motor_hat"}, {"id": "m1", "type": "motor_hat", "address": 0x61})
+    m0, m1 = p.devices()
+    for device in (m0, m1):
+        fn = device.type.function_by_name("set_motor2_throttle")
+        assert fn
+        p.call(device, fn, {"throttle": -0.6})
+    fake = p._bus
+    assert isinstance(fake, FakeI2C)
+    del fake.chips[0x60]  # m0 stops answering: every transfer to it is NACKed
+    p.stop()
+    assert "m0: could not drive it safe at stop" in caplog.text
+    pca = chip(p, 0x61)
+    for enable, forward, reverse in CHANNELS.values():
+        assert pca.duty(enable) == pca.duty(forward) == pca.duty(reverse) == FULL_ON
+
+
+@pytest.mark.parametrize("start", [0.5, -0.5])
+def test_a_write_that_fails_partway_through_stop_never_leaves_the_bridge_driving_harder(start: float) -> None:
+    # stop() brakes through the same path as a call to throttle 0.
+    def at_start() -> tuple[AdafruitProvider, FakeI2C, float]:
+        p = started()
+        throttle(p, 1, start)
+        fake = p._bus
+        assert isinstance(fake, FakeI2C)
+        return p, fake, drive(chip(p), 1)
+
+    p, fake, start_drive = at_start()
+    before = fake.writes
+    p.stop()
+    writes = fake.writes - before
+    assert drive(chip(p), 1) == 0.0
+    for k in range(writes):
+        p, fake, _ = at_start()
+        fake.fail_write = fake.writes + k
+        p.stop()  # the bus error is logged, not raised
+        left = drive(chip(p), 1)
+        assert any(left == pytest.approx(a, abs=1 / 4096) for a in (0.0, start_drive)), (
+            f"stop from {start}, write {k} of {writes} failed: bridge left driving at {left:+.4f}"
+        )

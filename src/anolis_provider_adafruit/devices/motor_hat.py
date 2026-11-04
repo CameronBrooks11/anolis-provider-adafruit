@@ -36,8 +36,12 @@ one of those writes leaves the bridge braked, or at the old or the new
 throttle. A change in the same direction writes the inputs directly: only the
 input carrying the PWM changes, so there is no state in between.
 
-The board has no command watchdog: if the provider or the runtime stops, the
-motors keep their last throttle until the board loses power.
+The board has no command watchdog, so the provider's stop() is the only thing
+that stops the motors when the runtime goes away: it brakes every terminal
+when the session ends on stdin EOF (the runtime exited, crashed or closed the
+pipe), a malformed frame, a broken pipe, an error in the serving loop, or
+SIGTERM. A SIGKILL or a crash of the provider's Python process skips it, and
+the motors keep their last throttle until the board loses power.
 """
 
 from __future__ import annotations
@@ -170,13 +174,22 @@ class MotorHat(DeviceDriver):
     def call(self, function: Function, args: Mapping[str, Any]) -> Mapping[str, Any] | None:
         self._check_restarted()
         motor = int(function.name.removeprefix("set_motor").removesuffix("_throttle"))
+        self._set(motor, float(args["throttle"]))
+        return None
+
+    def stop(self) -> None:
+        """Brake every terminal: the safe state the board takes at connect."""
+        self._check_restarted()
+        for motor in CHANNELS:
+            self._set(motor, 0.0)
+
+    def _set(self, motor: int, target: float) -> None:
         dc = self._motors[motor]
-        start, target = dc.throttle, float(args["throttle"])
+        start = dc.throttle
         if start == target or start * target > 0:
             dc.throttle = target
-            return None
+            return
         enable = self._pca.channels[CHANNELS[motor][0]]
         enable.duty_cycle = 0  # short brake while the inputs change
         dc.throttle = target
         enable.duty_cycle = FULL
-        return None
