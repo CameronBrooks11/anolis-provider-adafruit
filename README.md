@@ -91,8 +91,8 @@ runtime goes away: if the provider is killed with `SIGKILL`, or its Python
 process crashes, nothing brakes them and they keep their last throttle until
 the motor supply is cut.
 
-This is a software stop, not an emergency stop. Cut the motor supply for an
-emergency stop. See the runtime's
+The zero rung, `POST /v0/estop` and the brake on exit are a software stop,
+not an emergency stop. Cut the motor supply for an emergency stop. See the runtime's
 [safety guide](https://github.com/anolishq/anolis/blob/main/docs/safety.md).
 
 ## Install
