@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 import adafruit_bme280.basic as driver
 import pytest
+import yaml
 from anolis.deviceprovider.v1 import envelope_pb2, status_pb2
-from anolis_provider_sdk import DeviceState, HealthState, ProviderError, Session, StatusCode
+from anolis_provider_sdk import DeviceState, HealthState, ProviderError, Session, StatusCode, run
 from anolis_provider_sdk.cli import ConfigError, load_config
 
 from anolis_provider_adafruit.devices.bme280 import BME280
@@ -110,16 +112,43 @@ def test_health_is_ok_before_start() -> None:
     assert p.device_health(p.devices()[0]) is None
 
 
-@pytest.mark.parametrize(
-    ("devices", "message"),
-    [
-        ([{"id": "a", "type": "bme280"}, {"id": "a", "type": "bme280", "address": 0x76}], "configured twice"),
-        ([{"id": "a", "type": "bme280"}, {"id": "b", "type": "bme280", "address": 0x77}], "0x77"),
-    ],
-)
-def test_conflicting_devices_are_refused(devices: list[dict[str, Any]], message: str) -> None:
-    with pytest.raises(ValueError, match=message):
-        AdafruitProvider({"mock": True, "devices": devices})
+CONFLICTS = [
+    pytest.param(
+        "devices:\n  - {id: a, type: bme280}\n  - {id: a, type: bme280, address: 0x76}\n",
+        "device id 'a' is configured twice",
+        id="duplicate-id",
+    ),
+    pytest.param(
+        "devices:\n  - {id: a, type: bme280}\n  - {id: b, type: bme280, address: 0x77}\n",
+        "I2C address 0x77 is configured for both 'a' and 'b'",
+        id="shared-address",
+    ),
+]
+
+
+@pytest.mark.parametrize(("body", "message"), CONFLICTS)
+def test_check_config_refuses_conflicting_devices(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], body: str, message: str
+) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("mock: true\n" + body)
+    assert run(AdafruitProvider, ["--check-config", str(path)]) == 1
+    err = capsys.readouterr().err
+    assert message in err and "config valid" not in err
+
+
+def test_check_config_accepts_two_boards_on_two_addresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("mock: true\ndevices:\n  - {id: a, type: bme280}\n  - {id: b, type: bme280, address: 0x76}\n")
+    assert run(AdafruitProvider, ["--check-config", str(path)]) == 0
+    assert "config valid" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("body", "message"), CONFLICTS)
+def test_the_constructor_refuses_conflicting_devices_too(body: str, message: str) -> None:
+    config = yaml.safe_load("mock: true\n" + body)
+    with pytest.raises(ValueError, match=re.escape(message)):
+        AdafruitProvider(config)
 
 
 @pytest.mark.parametrize(

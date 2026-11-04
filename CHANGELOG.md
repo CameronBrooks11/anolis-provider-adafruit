@@ -51,6 +51,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `--check-config` refuses a config with two devices of the same id or on the
+  same I2C address. Before, it passed such a config, which the provider then
+  refused at start.
 - A BME280 that restarted on its own (a brown-out between two reads) is set up
   again on the next read, keeping its sea-level pressure. Before, the driver
   kept the chip's old mode in Python, and the provider reported the reset-value
