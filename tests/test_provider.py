@@ -8,7 +8,8 @@ from typing import Any
 
 import adafruit_bme280.basic as driver
 import pytest
-from anolis_provider_sdk import DeviceState, HealthState, ProviderError, StatusCode
+from anolis.deviceprovider.v1 import envelope_pb2, status_pb2
+from anolis_provider_sdk import DeviceState, HealthState, ProviderError, Session, StatusCode
 from anolis_provider_sdk.cli import ConfigError, load_config
 
 from anolis_provider_adafruit.devices.bme280 import BME280
@@ -179,6 +180,48 @@ def test_check_host_accepts_an_accessible_bus(monkeypatch: pytest.MonkeyPatch, t
     node = tmp_path / "i2c-3"
     node.touch(mode=0o600)
     assert check_host_with_node(monkeypatch, node).status == "met"
+
+
+def test_an_absent_bus_at_startup_leaves_the_provider_up_and_not_ready(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The SDK runs check_host at startup: an unmet requirement stops start()
+    # from running at all, so no bus is opened and no device is listed.
+    monkeypatch.setattr("anolis_provider_adafruit.provider.bus_device", lambda bus: str(tmp_path / f"i2c-{bus}"))
+    provider = AdafruitProvider(REAL)
+    started_with: list[float] = []
+    monkeypatch.setattr(provider, "start", started_with.append)
+    session = Session(provider)
+    hello = envelope_pb2.Request(request_id=1)
+    hello.hello.protocol_version = "v1"
+    assert session.handle(hello).status.code == status_pb2.Status.CODE_OK
+    wait_ready = envelope_pb2.Request(request_id=2)
+    wait_ready.wait_ready.SetInParent()
+    diagnostics = dict(session.handle(wait_ready).wait_ready.diagnostics)
+    assert diagnostics["ready"] == "false"
+    assert diagnostics["host_check"] == "unmet"
+    assert "i2c-3 does not exist" in diagnostics["host_unmet"]
+    assert diagnostics["device_count"] == "0"
+    assert started_with == []
+    list_devices = envelope_pb2.Request(request_id=3)
+    list_devices.list_devices.SetInParent()
+    assert list(session.handle(list_devices).list_devices.devices) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "i2c_bus: 1.0\ndevices: [{id: env0, type: bme280}]",
+        "devices: [{id: env0, type: bme280, address: 119.0}]",
+        "devices: [{id: env0, type: bme280}]\ndevices: [{id: env1, type: bme280}]",
+        "devices: [{id: env0, type: bme280, id: env1}]",
+    ],
+)
+def test_the_config_loader_refuses_floats_as_integers_and_duplicate_keys(tmp_path: Path, body: str) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(body)
+    with pytest.raises(ConfigError):
+        load_config(AdafruitProvider, str(path))
 
 
 def test_the_bus_device_node_follows_the_bus_number() -> None:

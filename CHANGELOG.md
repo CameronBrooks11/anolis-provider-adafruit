@@ -31,6 +31,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and can be power-cycled, and the PCA9685 model can be power-cycled and
   answers its All Call address.
 
+### Changed
+
+- Built on anolis-provider-sdk at `921808e`. At start-up the provider now runs
+  the `--check-host` checks first: with `/dev/i2c-<n>` missing or not
+  accessible it stays up but not ready, opens no bus and lists no devices, and
+  `WaitReady` reports `host_check=unmet` and `host_unmet`, where before every
+  board was listed `UNREACHABLE` with the bus error. Configs are loaded
+  strictly: a duplicated key, a non-finite number, or a float where an integer
+  belongs (`i2c_bus: 1.0`, `address: 119.0`) is refused. `SIGTERM` ends the
+  session in order with exit 0, and stdout is guarded at the file-descriptor
+  level while serving.
+
 ### Fixed
 
 - A BME280 that restarted on its own (a brown-out between two reads) is set up

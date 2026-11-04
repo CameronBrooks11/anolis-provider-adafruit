@@ -96,7 +96,10 @@ i2cdetect -y 1                      # a BME280 shows as 77 (or 76)
 
 `install.sh` runs the provider's `--check-host` before installing and stops on
 an unmet requirement. The provider reports whether `/dev/i2c-<n>` exists and
-whether the user it runs as can open it.
+whether the user it runs as can open it. It runs the same check every time it
+starts: with a requirement unmet it stays up but not ready and lists no
+devices, and the runtime's `WaitReady` diagnostics carry `host_check=unmet` and
+the reason in `host_unmet`.
 
 ## Measuring start-up time on the target
 
