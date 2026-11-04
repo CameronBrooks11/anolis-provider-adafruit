@@ -6,8 +6,9 @@ it and checks the chip id. The chip sleeps between measurements, which the
 driver handles.
 
 A reading whose CRC fails comes back from the driver as (None, None), with no
-error. The board reports it as a failed transfer, so the provider retries the
-board instead of passing on a missing value.
+error, and leaves the chip awake. The board reports it as a failed transfer, so
+the provider retries the board instead of passing on a missing value. Reported
+upstream: https://github.com/adafruit/Adafruit_CircuitPython_SHTC3/issues/24
 """
 
 from __future__ import annotations

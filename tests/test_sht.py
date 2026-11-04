@@ -75,6 +75,8 @@ def test_an_sht4x_whose_serial_fails_its_crc_is_refused() -> None:
 
 
 def test_the_shtc3_driver_returns_none_for_a_reading_that_fails_its_crc() -> None:
+    # Pins https://github.com/adafruit/Adafruit_CircuitPython_SHTC3/issues/24:
+    # when this fails, the driver raises instead and the board can rely on it.
     chip = GarbledSHTC3()
     sensor = adafruit_shtc3.SHTC3(FakeI2C({0x70: chip}))
     chip.on = True
