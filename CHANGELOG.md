@@ -76,7 +76,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   1013.25 hPa after a cable is reseated.
 - The BME280 and the Motor HAT load on a Raspberry Pi. Blinka needs `gpiod`
   and the Pi PWM library there, which it does not declare and the drivers
-  import for type hints, so on a Pi 4 or Pi 5 neither driver loaded. The
+  import for type hints. On a Pi 4 neither board loaded, for want of `gpiod`;
+  on a Pi 5 the Motor HAT did not, for want of the Pi PWM library. The
   provider now depends on both on Linux, and the release binary bundles them.
 - `scripts/cold_start.py` exits 1 with the status code and message when a Hello
   or WaitReady reply is not OK, and when an OK WaitReady reports the provider

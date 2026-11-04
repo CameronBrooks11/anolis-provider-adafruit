@@ -17,11 +17,19 @@ dependencies = [
     "adafruit-extended-bus>=1.0,<2",
     # Blinka's platform libraries for the Raspberry Pi, which Blinka does not
     # declare. On a Pi, importing digitalio needs gpiod and importing pwmio
-    # needs the Pi PWM library, or Blinka raises RuntimeError. The BME280 and
-    # motor drivers import them for type hints alone, guarded against ImportError
-    # only, so without these neither loads on a Pi. The Pi PWM library is an
-    # sdist only: it builds a small C extension, so installing on Linux needs a
-    # C compiler. The bounds are the ones Blinka asks for.
+    # needs the Pi PWM library, or Blinka raises RuntimeError. The drivers
+    # import them for type hints alone, unguarded or guarded against ImportError
+    # only, so without these:
+    # - on a Pi 4 the BME280 and the PCA9685 (through adafruit_bus_device) do
+    #   not load, for want of gpiod;
+    # - on a Pi 5 adafruit_motor does not load, for want of the Pi PWM library.
+    # Reported upstream:
+    # https://github.com/adafruit/Adafruit_CircuitPython_BME280/issues/72
+    # https://github.com/adafruit/Adafruit_CircuitPython_Motor/issues/80
+    # https://github.com/adafruit/Adafruit_CircuitPython_BusDevice/issues/104
+    # Drop these once the drivers we use load without them. The Pi PWM library
+    # is an sdist only: it builds a small C extension, so installing on Linux
+    # needs a C compiler. The bounds are the ones Blinka asks for.
     "gpiod>=2.2.2,<3; sys_platform == 'linux'",
     "Adafruit-Blinka-Raspberry-Pi-PWM>=1.0.2,<2; sys_platform == 'linux'",
 ]
