@@ -4,18 +4,33 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import adafruit_bme280.basic as driver
 import pytest
 import yaml
 from anolis.deviceprovider.v1 import envelope_pb2, status_pb2
-from anolis_provider_sdk import DeviceState, HealthState, ProviderError, Session, StatusCode, run
+from anolis_provider_sdk import (
+    Arg,
+    Category,
+    DeviceState,
+    DeviceType,
+    Function,
+    HealthState,
+    ProviderError,
+    Session,
+    Signal,
+    StatusCode,
+    ValueType,
+    run,
+)
 from anolis_provider_sdk.cli import ConfigError, load_config
 
+from anolis_provider_adafruit.devices import KINDS, DeviceDriver
 from anolis_provider_adafruit.devices.bme280 import BME280
-from anolis_provider_adafruit.mock import FakeBME280, FakeI2C
+from anolis_provider_adafruit.mock import FakeBME280, FakeI2C, RegisterChip
 from anolis_provider_adafruit.provider import AdafruitProvider, bus_device
 
 ALL_SIGNALS = ["temperature", "relative_humidity", "pressure", "altitude", "sea_level_pressure"]
@@ -421,3 +436,54 @@ def test_every_device_is_unreachable_when_the_bus_never_opened(monkeypatch: pyte
         assert "/dev/i2c-99" in health.message
     assert p.health().state is HealthState.FAULT
     assert "/dev/i2c-99" in p.health().message
+
+
+def _setting(name: str) -> Function:
+    return Function(name, args=(Arg("value", ValueType.DOUBLE),), category=Category.CONFIG, is_idempotent=True)
+
+
+class TwoSettings(DeviceDriver):
+    """A test-only board with two settings, to pin the order a reconnect
+    applies them in. Every read and call is one write to the bus, so a failed
+    bus loses it like any board."""
+
+    type = DeviceType(
+        id="two_settings",
+        signals=(Signal("value", ValueType.DOUBLE),),
+        functions=(_setting("set_a"), _setting("set_b")),
+    )
+    addresses = (0x10,)
+    applied: ClassVar[list[tuple[str, float]]] = []
+
+    def __init__(self, i2c: Any, address: int) -> None:
+        self._i2c, self._address = i2c, address
+        i2c.writeto(address, b"\x00")
+
+    @staticmethod
+    def fake() -> RegisterChip:
+        return RegisterChip()
+
+    def read(self, signal_ids: list[str]) -> Mapping[str, Any]:
+        self._i2c.writeto(self._address, b"\x00")
+        return {"value": 0.0}
+
+    def call(self, function: Function, args: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        self._i2c.writeto(self._address, b"\x00")
+        TwoSettings.applied.append((function.name, args["value"]))
+        return None
+
+
+def test_two_settings_are_applied_again_in_the_order_they_were_last_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(KINDS, "two_settings", TwoSettings)
+    monkeypatch.setattr(TwoSettings, "applied", [])
+    p = started({"mock": True, "devices": [{"id": "t", "type": "two_settings"}]})
+    d = p.devices()[0]
+    set_a, set_b = (d.type.function_by_name(n) for n in ("set_a", "set_b"))
+    assert set_a and set_b
+    p.call(d, set_a, {"value": 1.0})
+    p.call(d, set_b, {"value": 2.0})
+    p.call(d, set_a, {"value": 3.0})  # set last now: applied after set_b
+    TwoSettings.applied.clear()
+    lose_and_recover(p, d)
+    p.read(d, ["value"])
+    assert TwoSettings.applied == [("set_b", 2.0), ("set_a", 3.0)]
