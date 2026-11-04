@@ -213,7 +213,7 @@ was read rather than a file to rerun.
 
 | Figure | Value | Method |
 | --- | --- | --- |
-| Bundle driver submodules | 277 | `path = ` lines in the bundle's `.gitmodules` under `libraries/drivers/` |
+| Bundle driver submodules | 277 | `path` lines in the bundle's `.gitmodules` under `libraries/drivers/` |
 | Bundle helper submodules (MotorKit, ServoKit, Motor live here) | 135 | the same, under `libraries/helpers/` |
 | Bundle drivers whose source or README mentions I2C | 191 (182 by source, 9 by README only) | a search of each driver's main module and README for I2C. **Estimate**: it misses packages whose `__init__.py` is empty (it reports `cap1188`, `atecc`, `neotrellis` as non-I2C, which they are not). |
 | Products in the STEMMA QT category page | 309 distinct product IDs | product IDs parsed from the category page's product links. The page's subcategory labels read Devices and Sensors (200), Controllers (91), Cables and Connectors (19); parsing each subcategory page gives the same 200 / 91 / 19, which sum to 310 because 5681 is listed in two subcategories. |
