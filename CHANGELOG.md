@@ -39,6 +39,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The repository moved to `anolishq/anolis-provider-adafruit`. Pin
+  `repo: anolishq/anolis-provider-adafruit` in a machine profile; the old
+  address and its release downloads redirect.
 - Built on anolis-provider-sdk at `921808e`. At start-up the provider now runs
   the `--check-host` checks first: with `/dev/i2c-<n>` missing or not
   accessible it stays up but not ready, opens no bus and lists no devices, and
@@ -96,5 +99,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `install.sh`, with the config schema assets the Workbench reads.
 - `scripts/cold_start.py`, which measures start-up time on the target.
 
-[Unreleased]: https://github.com/CameronBrooks11/anolis-provider-adafruit/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/CameronBrooks11/anolis-provider-adafruit/releases/tag/v0.1.0
+[Unreleased]: https://github.com/anolishq/anolis-provider-adafruit/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/anolishq/anolis-provider-adafruit/releases/tag/v0.1.0

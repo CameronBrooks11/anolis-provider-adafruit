@@ -139,7 +139,7 @@ The script is not in the release tarball. Fetch it from the tag of the release
 you installed:
 
 ```sh
-curl -fLO https://raw.githubusercontent.com/CameronBrooks11/anolis-provider-adafruit/v<version>/scripts/cold_start.py
+curl -fLO https://raw.githubusercontent.com/anolishq/anolis-provider-adafruit/v<version>/scripts/cold_start.py
 ```
 
 Each run starts the provider, which opens the bus and sets every board up: a

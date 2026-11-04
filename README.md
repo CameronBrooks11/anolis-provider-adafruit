@@ -106,7 +106,7 @@ Pin it in a machine profile like any provider. `install.sh` installs from any
 components:
   providers:
     adafruit:
-      repo: CameronBrooks11/anolis-provider-adafruit
+      repo: anolishq/anolis-provider-adafruit
       version: "0.1.0"
 ```
 
