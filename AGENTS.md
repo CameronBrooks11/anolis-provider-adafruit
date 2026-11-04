@@ -16,6 +16,18 @@ Per-repo conventions for coding agents.
 - **The SDK on top of the vendor's driver.** A board module declares the device type and calls Adafruit's driver. No
   register-level code outside `mock.py`; if a driver is missing or broken, fix it upstream or write a driver as its own
   package, not inside a board module.
+- **Vendor drivers follow the rules in the SDK guide's
+  [Vendor drivers](https://github.com/anolishq/anolis-provider-sdk-python/blob/main/docs/writing-a-provider.md#vendor-drivers)
+  section.** Here that means:
+  - A driver Adafruit lacks goes in its own staging package beside `anolis_provider_adafruit`, written in Adafruit's
+    CircuitPython driver conventions and importing nothing from the provider, with a test enforcing that. There is
+    none yet.
+  - A workaround for an Adafruit driver bug links the upstream issue in a comment, and a test that calls the driver
+    directly pins the bug and links the same issue (`test_the_shtc3_driver_*` in `tests/test_sht.py`, for one). The
+    Raspberry Pi platform libraries in `pyproject.toml` are such a workaround, pinned by
+    `test_the_drivers_need_the_pi_platform_libraries`; drop them when it fails.
+  - Filing an upstream issue or pull request is public and made under the maintainer's account. An agent drafts it,
+    with a reproduction that uses only Adafruit's driver, and files it only with explicit approval, one at a time.
 - **Mock mode runs the real driver.** The fake bus emulates the chip's registers; never stub the driver itself.
 - **Only a failed I2C transfer or `NotAnswering` means a board is unreachable.** A transfer error is an `OSError`
   whose errno is in `_BUS_ERRNOS` (`provider.py`); `NotAnswering` (`devices/base.py`) is what a board module raises
