@@ -54,12 +54,17 @@ model is right; one written to match the provider's own code is not.
 
 ## Boards with outputs
 
-A board that drives anything (a motor, a relay, a heater) has three more rules,
-from the runtime's safety contract:
+A board that drives anything (a motor, a relay, a heater) has more rules, from
+the runtime's safety contract:
 
 - **Drive the safe state when the board connects.** The constructor runs at
   start-up and again when a lost board answers, and leaves every output safe.
   Name the safe state in the module docstring.
+- **Drive it again in `stop()`.** The provider calls `stop()` on every
+  connected board when the session ends (stdin EOF, `SIGTERM`, a broken pipe
+  or a framing error), and logs a failure without stopping the other boards.
+  Go through the same write path as `call`, so a transfer that fails partway
+  leaves the output no worse than before.
 - **Notice a chip that restarted on its own.** A brown-out between two polls
   fails no transfer, so the provider never sees the board lost. Check on every
   read and call for the chip's power-on state (the Motor HAT checks the
@@ -76,7 +81,9 @@ from the runtime's safety contract:
   never writes reads with quality `UNKNOWN`.
 
 Say in the module whether the board has a command watchdog. Most Adafruit
-boards do not, and then the outputs hold their last value if the provider stops.
+boards do not, and then `stop()` is the only thing that makes the outputs safe
+when the runtime goes away: if the provider is killed with `SIGKILL` or its
+process crashes, the outputs hold their last value.
 
 ## Before opening a PR
 

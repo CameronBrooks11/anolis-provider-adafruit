@@ -41,6 +41,28 @@ The provider brakes all four terminals when it connects. Before the first run,
 check that each motor can turn freely and that nothing is attached that would
 move when it spins.
 
+### When the provider exits
+
+The HAT has no command watchdog: a PCA9685 holds its outputs until it is told
+otherwise or loses power. So the provider brakes all four terminals of every
+HAT it has connected when its session ends, which happens when:
+
+- the runtime stops it or shuts down, or crashes, so the provider's stdin
+  closes;
+- the provider receives `SIGTERM` (`systemctl stop`, or the runtime stopping
+  it);
+- the session fails: a malformed frame, a broken pipe, or an error in the
+  serving loop.
+
+A HAT that does not answer at that moment is logged and skipped, and the other
+HATs are still braked. A HAT that was already lost (reported `UNREACHABLE`) is
+not tried.
+
+Nothing brakes the motors if the provider is killed with `SIGKILL` (including
+systemd's `SIGKILL` after a stop times out) or its Python process crashes:
+they keep their last throttle until the motor supply is cut or the HAT loses
+power. Wire a cut-off on the motor supply for an emergency stop.
+
 ### Bench check of the software stop
 
 With the runtime config's `safety.safe_state.zero_is_safe: true`, and a motor on
@@ -59,6 +81,10 @@ curl -s -H "$H" -X POST http://127.0.0.1:8080/v0/estop/clear
 
 The motor should spin at the call, stop at the stop, and read back 0. Function
 ids follow the terminals: `set_motor1_throttle` is 1, up to 4.
+
+To check the brake on exit, repeat the call so the motor spins, then
+`sudo systemctl stop anolis-runtime`: the motor should stop as the provider
+exits.
 
 ## The SHT4x and SHTC3
 

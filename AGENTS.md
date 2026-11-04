@@ -23,8 +23,8 @@ Per-repo conventions for coding agents.
   driver exceptions that mean that. The provider treats those two alike in `_connect`, `read()` and `call()`: the
   board is marked lost, reported UNREACHABLE and retried. Any other exception is a provider fault and must surface
   as one.
-- **Outputs: safe at connect, zero-rung drivable, read back from the chip.** See `docs/adding-a-board.md`, "Boards with
-  outputs".
+- **Outputs: safe at connect and at stop, zero-rung drivable, read back from the chip.** See `docs/adding-a-board.md`,
+  "Boards with outputs".
 - **Only what the config names.** The provider opens one I2C bus and the configured addresses. It does not scan, and
   does not expose GPIO or SPI.
 

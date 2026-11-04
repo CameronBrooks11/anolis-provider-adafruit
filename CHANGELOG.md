@@ -19,6 +19,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or call and set up and braked again, so a command after it takes effect.
   Every Motor HAT connects before the other boards, so its reset turns off
   the PCA9685's All Call address, `0x70`, before an SHTC3 there is opened.
+- The provider brakes every terminal of every connected Motor HAT when it
+  exits: on stdin EOF (the runtime shut down, crashed or closed the pipe),
+  `SIGTERM`, a broken pipe or a framing error. A HAT that fails to answer then
+  is logged and the others are still braked. The HAT has no watchdog, so after
+  a `SIGKILL` or a crash of the provider process the motors keep their last
+  throttle.
 - The Sensirion SHT40/41/45 (`sht4x`) and SHTC3 (`shtc3`): temperature and
   humidity. A chip that does not answer as the sensor is refused, and a
   reading that fails its CRC reports the board unavailable and is retried,
