@@ -12,6 +12,8 @@ dependencies = [
     "adafruit-circuitpython-bme280>=2.6,<3",
     "adafruit-circuitpython-motor>=3.5,<4",
     "adafruit-circuitpython-pca9685>=3.4,<4",
+    "adafruit-circuitpython-sht4x>=1.0,<2",
+    "adafruit-circuitpython-shtc3>=1.1,<2",
     "adafruit-extended-bus>=1.0,<2",
 ]
 
@@ -56,7 +58,7 @@ files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
 # Generated protobuf modules and the CircuitPython drivers ship without type stubs.
-module = ["anolis.*", "adafruit_bme280.*", "adafruit_extended_bus", "adafruit_bus_device.*", "adafruit_motor.*", "adafruit_pca9685"]
+module = ["anolis.*", "adafruit_bme280.*", "adafruit_extended_bus", "adafruit_bus_device.*", "adafruit_motor.*", "adafruit_pca9685", "adafruit_sht4x", "adafruit_shtc3"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

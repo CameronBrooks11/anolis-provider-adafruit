@@ -1,5 +1,6 @@
 # Mock-mode config for the conformance harness and CI: two BME280s at both of
-# the board's addresses and a Motor HAT, on a simulated bus. No hardware needed.
+# the board's addresses, a Motor HAT, an SHT4x and an SHTC3, on a simulated bus.
+# No hardware needed.
 mock: true
 devices:
   - id: env0
@@ -11,3 +12,9 @@ devices:
   - id: motors0
     type: motor_hat
     label: Motor HAT
+  - id: rh0
+    type: sht4x
+    label: Humidity sensor 0
+  - id: rh1
+    type: shtc3
+    label: Humidity sensor 1

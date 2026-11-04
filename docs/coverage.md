@@ -5,8 +5,9 @@ the Adafruit CircuitPython driver that runs it, not by SKU. One driver usually
 covers several boards, so a row here is one unit of work: a module in
 `devices/` as described in [adding-a-board.md](adding-a-board.md).
 
-Supported today: `bme280`, and `motor_hat` (PCA9685 with
-`adafruit-circuitpython-motor`). Everything else is a candidate.
+Supported today: `bme280`, `motor_hat` (PCA9685 with
+`adafruit-circuitpython-motor`), `sht4x` and `shtc3`. Everything else is a
+candidate.
 
 Sources, all retrieved 2026-11-03:
 
@@ -80,9 +81,9 @@ No Adafruit relay board appeared in the STEMMA QT category (searched names for
 | LPS22 / LPS25 / LPS28 / LPS33/35 | `-lps2x`, `-lps28`, `-lps35hw` | LPS25 (4530); LPS22 (4633); LPS28 (6067); LPS33HW (4414); LPS35HW (4258) | 0x5D (lps2x, lps35hw); 0x5C (lps28) | LPS33HW is the water-resistant one. |
 | MPRLS ported pressure | `adafruit-circuitpython-mprls` | MPRLS (3965) | 0x18 | Gauge for pneumatic or vacuum lines. Not in the STEMMA QT category. |
 | MS8607 | `adafruit-circuitpython-ms8607` | MS8607 PHT (4716) | two addresses in source (0x40, 0x76) | |
-| SHT4x | `adafruit-circuitpython-sht4x` | SHT40 (4885); SHT41 (5776); SHT45 (5665); SHT45 with PTFE (6174) | 0x44 | One driver, four boards. Only 4885 is linked from the driver; the rest are matched by name. |
+| SHT4x | `adafruit-circuitpython-sht4x` | SHT40 (4885); SHT41 (5776); SHT45 (5665); SHT45 with PTFE (6174) | 0x44 | **Supported** (`sht4x`). One driver, four boards. Only 4885 is linked from the driver; the rest are matched by name. |
 | SHT3x | `adafruit-circuitpython-sht31d` | SHT31-D (2857) | 0x44, alt 0x45 | |
-| SHTC3, AHT20, HTU31D, HDC302x, Si7021, HTS221 | `-shtc3`, `-ahtx0`, `-htu31d`, `-hdc302x`, `-si7021`, `-hts221` | SHTC3 (4636); AHT20 (4566); HTU31 (4832); HDC3022 (5989); Si7021 (3251); HTS221 (4535) | 0x70; 0x38; 0x40/0x41; 0x44; 0x40; 0x5F | Humidity alternatives; each its own driver. |
+| SHTC3, AHT20, HTU31D, HDC302x, Si7021, HTS221 | `-shtc3`, `-ahtx0`, `-htu31d`, `-hdc302x`, `-si7021`, `-hts221` | SHTC3 (4636); AHT20 (4566); HTU31 (4832); HDC3022 (5989); Si7021 (3251); HTS221 (4535) | 0x70; 0x38; 0x40/0x41; 0x44; 0x40; 0x5F | SHTC3 **supported** (`shtc3`); the others are candidates. Humidity alternatives; each its own driver. |
 | MCP9808 | `adafruit-circuitpython-mcp9808` | MCP9808 (5027; driver links 1782) | 0x18 | |
 | TMP117 | `adafruit-circuitpython-tmp117` | TMP117 (4821) | 0x48 | ±0.1 °C. Whether this driver also covers the TMP119 (6482) is **unconfirmed**. |
 | ADT7410, PCT2075 | `-adt7410`, `-pct2075` | ADT7410 (4089); PCT2075 (4369) | 0x48; 0x37 | |
@@ -193,8 +194,9 @@ Ranked by value per effort for a lab-automation runtime.
    driver, whose safe state (output low, solenoid off) is unambiguous.
 4. **INA219 / INA2xx** power monitors. Every rig has a rail worth watching;
    INA219 alone is one small register model.
-5. **SHT4x** and **SCD4x**. Four and three boards per driver; humidity and CO2
-   are the commonest enclosure readings after temperature.
+5. **SCD4x** (5187, 5190, 6512). Three boards on one driver; CO2 is the
+   commonest enclosure reading after temperature and humidity. (SHT4x and SHTC3
+   are done.)
 6. **NAU7802** load cell (4538). Weighing is frequent in bench automation.
 7. **TCA9548A mux**. Not a sensor, but it unlocks duplicates of everything
    above. Needs a design decision in the config schema first.
