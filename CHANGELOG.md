@@ -57,6 +57,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the Pi PWM library there, which it does not declare and the drivers
   import for type hints, so on a Pi 4 or Pi 5 neither driver loaded. The
   provider now depends on both on Linux, and the release binary bundles them.
+- `scripts/cold_start.py` exits 1 with the status code and message when a Hello
+  or WaitReady reply is not OK, where it used to time any reply as a success.
 
 ## [0.1.0] - 2026-11-03
 
