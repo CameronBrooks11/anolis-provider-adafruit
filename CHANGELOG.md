@@ -39,6 +39,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registers of the sleeping chip as good readings until it restarted. Every
   connect now waits out the first measurement, so the first read after it is
   not of those reset values either.
+- A board is reported unreachable only when it is not answering: a failed I2C
+  transfer, or the board module finding nothing at the address, another chip,
+  or a chip still starting. Any other error from a driver, such as a missing
+  platform library or a setting the chip cannot take, is now a provider fault
+  instead of an unreachable board. The same holds during a read or call, so a
+  BME280 that comes back as another chip is unreachable rather than an
+  internal error.
+- When the I2C bus does not open, every device reports `UNREACHABLE` with the
+  bus error and the provider reports a fault, where every device used to
+  report healthy.
+- Settings survive a reconnect: the latest value of each setting function
+  (category `CONFIG`, idempotent, with an argument) is applied again when a
+  lost board answers, so the BME280's sea-level pressure no longer resets to
+  1013.25 hPa after a cable is reseated.
 
 ## [0.1.0] - 2026-11-03
 

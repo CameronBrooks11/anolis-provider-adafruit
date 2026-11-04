@@ -8,6 +8,7 @@ import adafruit_shtc3
 import pytest
 from anolis_provider_sdk import DeviceState, ProviderError
 
+from anolis_provider_adafruit.devices import NotAnswering
 from anolis_provider_adafruit.devices.sht4x import SHT4x
 from anolis_provider_adafruit.devices.shtc3 import SHTC3
 from anolis_provider_adafruit.mock import FakeI2C, FakeSHT4x, FakeSHTC3, sensirion_crc
@@ -69,7 +70,7 @@ def test_the_sht4x_driver_constructor_accepts_any_chip_that_acks() -> None:
 def test_an_sht4x_whose_serial_fails_its_crc_is_refused() -> None:
     chip = GarbledSHT4x()
     chip.on = True
-    with pytest.raises(ValueError, match="serial number"):
+    with pytest.raises(NotAnswering, match="serial number"):
         SHT4x(FakeI2C({0x44: chip}), 0x44)
 
 

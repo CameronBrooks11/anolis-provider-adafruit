@@ -53,7 +53,10 @@ schema: `anolis-provider-adafruit --config-schema`.
 
 A board that does not answer is listed anyway and reported `UNREACHABLE`; reads
 and calls fail with `UNAVAILABLE` and retry the board each time, so reseating a
-cable recovers it without a restart.
+cable recovers it without a restart. Settings made since start-up, such as the
+BME280's sea-level pressure, are applied again when it answers. If the bus
+itself does not open, the provider reports a fault and every board
+`UNREACHABLE` with the bus error.
 
 ## Motors and the software stop
 

@@ -16,6 +16,33 @@ A board is one module in `src/anolis_provider_adafruit/devices/`, registered in
   address until it is set up (the PCA9685's All Call address is the SHTC3's),
   and the provider connects it before the others.
 
+## When the board does not answer
+
+The provider reports a board UNREACHABLE, and tries it again on the next read
+or call, for exactly two exceptions: an `OSError` from a failed I2C transfer
+(an errno in `_BUS_ERRNOS` in `provider.py`), and `NotAnswering` from
+`devices/base.py`. Raise `NotAnswering`, with a message saying what was found,
+when the board at the address is absent, is a different chip, or has not
+finished starting, whether at connect or when the board sets the chip up again
+during a read or call. Where the driver signals one of those by raising, catch
+that exception narrowly and raise `NotAnswering` from it: the probe's
+`ValueError` for an empty address (`nothing_at` in `devices/base.py` tells it
+apart) and the driver's own chip-id `RuntimeError`. Every other exception, a
+`ValueError` or `RuntimeError` included, is a fault in the provider and is
+reported as one.
+
+## Settings
+
+A function whose category is `CONFIG`, that is idempotent and that takes at
+least one argument is a setting, such as the BME280's
+`set_sea_level_pressure`. The provider records the latest arguments of each
+setting called on a board and, when it reconnects that board after losing it,
+calls them again on the new driver, in the order they were last set: a new
+driver starts from its defaults, and the chip may have lost power with the
+cable. Declare a function that way only if calling it again with the same
+arguments puts the setting back. A setting that fails to apply again leaves the
+board lost, like any failed transfer, and the next read or call retries it.
+
 ## The fake chip
 
 Mock mode runs Adafruit's real driver against `FakeI2C`, so the fake has to

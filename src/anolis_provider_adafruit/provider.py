@@ -17,6 +17,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from anolis_provider_sdk import (
+    Category,
     Device,
     DeviceHealth,
     DeviceState,
@@ -30,7 +31,7 @@ from anolis_provider_sdk import (
     run,
 )
 
-from .devices import KINDS, DeviceDriver
+from .devices import KINDS, DeviceDriver, NotAnswering
 from .mock import FakeI2C
 
 log = logging.getLogger("anolis_provider_adafruit")
@@ -42,8 +43,18 @@ log = logging.getLogger("anolis_provider_adafruit")
 _BUS_ERRNOS = {errno.ENXIO, errno.EREMOTEIO, errno.EIO, errno.ETIMEDOUT, errno.EAGAIN}
 
 
-def _is_bus_error(err: OSError) -> bool:
-    return err.errno in _BUS_ERRNOS
+def _not_answering(err: Exception) -> bool:
+    """Whether an exception from a board means the board is not answering: a
+    failed I2C transfer, or a board module's NotAnswering. Anything else is a
+    fault in the provider."""
+    return isinstance(err, NotAnswering) or (isinstance(err, OSError) and err.errno in _BUS_ERRNOS)
+
+
+def _is_setting(function: Function) -> bool:
+    """A function the provider calls again after a reconnect: one that
+    configures the board, gives the same result when repeated, and takes
+    the setting as an argument."""
+    return function.category is Category.CONFIG and function.is_idempotent and bool(function.args)
 
 
 try:
@@ -116,6 +127,9 @@ class _Slot:
         self.address = address
         self.driver: DeviceDriver | None = None
         self.error = "not started"
+        # The latest arguments of each setting function called, in the order
+        # they were last set, for a reconnect to apply again.
+        self.settings: dict[str, tuple[Function, Mapping[str, Any]]] = {}
 
 
 class AdafruitProvider(Provider):
@@ -149,28 +163,42 @@ class AdafruitProvider(Provider):
                 )
             )
         self._bus: Any = None
+        self._started = False
+        self._bus_error: str | None = None
 
     # ---- lifecycle ----------------------------------------------------------------
 
     def start(self, budget_s: float) -> None:
-        if self.config.get("mock", False):
-            self._bus = FakeI2C({s.address: s.kind.fake() for s in self._slots.values()})
-        else:
-            # Imported here: Blinka detects the board on import, which is slow on a Pi
-            # and does not belong before Hello.
-            from adafruit_extended_bus import ExtendedI2C
+        self._started = True
+        try:
+            if self.config.get("mock", False):
+                self._bus = FakeI2C({s.address: s.kind.fake() for s in self._slots.values()})
+            else:
+                # Imported here: Blinka detects the board on import, which is slow on a Pi
+                # and does not belong before Hello.
+                from adafruit_extended_bus import ExtendedI2C
 
-            self._bus = ExtendedI2C(self.config.get("i2c_bus", 1))
+                self._bus = ExtendedI2C(self.config.get("i2c_bus", 1))
+        except Exception as err:
+            # Every board is unreachable, and says why.
+            self._bus_error = f"the I2C bus did not open: {err}"
+            for slot in self._slots.values():
+                slot.error = self._bus_error
+            raise
         # Stable: the config order holds within each group.
         for device_id, slot in sorted(self._slots.items(), key=lambda item: not item[1].kind.connect_first):
             self._connect(device_id, slot)
 
     def _connect(self, device_id: str, slot: _Slot) -> DeviceDriver | None:
         try:
-            slot.driver = slot.kind(self._bus, slot.address)
-        except (OSError, ValueError, RuntimeError) as err:
-            # ValueError: no device at the address; RuntimeError: something else is there.
-            if isinstance(err, OSError) and not _is_bus_error(err):
+            driver = slot.kind(self._bus, slot.address)
+            # After a loss, a new driver starts from its defaults and the chip
+            # may have lost power: set again what was set before.
+            for function, args in slot.settings.values():
+                driver.call(function, args)
+            slot.driver = driver
+        except (OSError, NotAnswering) as err:
+            if not _not_answering(err):
                 raise
             slot.driver = None
             slot.error = f"{slot.kind.type.id} at {slot.address:#04x}: {err}"
@@ -189,7 +217,7 @@ class AdafruitProvider(Provider):
             raise ProviderError(StatusCode.UNAVAILABLE, f"{device.id} is not answering: {slot.error}")
         return driver
 
-    def _lost(self, device: Device, err: OSError) -> ProviderError:
+    def _lost(self, device: Device, err: Exception) -> ProviderError:
         slot = self._slots[device.id]
         slot.driver = None
         slot.error = f"{slot.kind.type.id} at {slot.address:#04x}: {err}"
@@ -200,29 +228,36 @@ class AdafruitProvider(Provider):
         driver = self._driver(device)
         try:
             return driver.read(signal_ids)
-        except OSError as err:
-            if not _is_bus_error(err):
+        except (OSError, NotAnswering) as err:
+            if not _not_answering(err):
                 raise
             raise self._lost(device, err) from err
 
     def call(self, device: Device, function: Function, args: Mapping[str, Any]) -> Mapping[str, Any] | None:
         driver = self._driver(device)
         try:
-            return driver.call(function, args)
-        except OSError as err:
-            if not _is_bus_error(err):
+            result = driver.call(function, args)
+        except (OSError, NotAnswering) as err:
+            if not _not_answering(err):
                 raise
             raise self._lost(device, err) from err
+        if _is_setting(function):
+            settings = self._slots[device.id].settings
+            settings.pop(function.name, None)  # to the end: the order they were last set in
+            settings[function.name] = (function, dict(args))
+        return result
 
     def health(self) -> Health:
+        if self._bus_error is not None:
+            return Health(HealthState.FAULT, self._bus_error)
         down = [device_id for device_id, slot in self._slots.items() if slot.driver is None]
-        if down and self._bus is not None:
+        if down and self._started:
             return Health(HealthState.DEGRADED, f"not answering: {', '.join(down)}")
         return Health()
 
     def device_health(self, device: Device) -> DeviceHealth | None:
         slot = self._slots[device.id]
-        if slot.driver is None and self._bus is not None:
+        if slot.driver is None and self._started:
             return DeviceHealth(DeviceState.UNREACHABLE, slot.error)
         return None
 
