@@ -6,12 +6,13 @@ import os
 from pathlib import Path
 from typing import Any
 
+import adafruit_bme280.basic as driver
 import pytest
 from anolis_provider_sdk import DeviceState, HealthState, ProviderError, StatusCode
 from anolis_provider_sdk.cli import ConfigError, load_config
 
 from anolis_provider_adafruit.devices.bme280 import BME280
-from anolis_provider_adafruit.mock import FakeI2C
+from anolis_provider_adafruit.mock import FakeBME280, FakeI2C
 from anolis_provider_adafruit.provider import AdafruitProvider, bus_device
 
 ALL_SIGNALS = ["temperature", "relative_humidity", "pressure", "altitude", "sea_level_pressure"]
@@ -209,4 +210,25 @@ def test_an_error_that_is_not_a_bus_error_on_read_is_not_unreachable() -> None:
         mp.setattr(BME280, "read", broken)
         with pytest.raises(PermissionError):
             p.read(d, ["temperature"])
+    assert p.device_health(d) is None
+
+
+def bme280_chip(provider: AdafruitProvider, address: int = 0x77) -> FakeBME280:
+    chip = bus(provider).chips[address]
+    assert isinstance(chip, FakeBME280)
+    return chip
+
+
+def test_a_bme280_that_restarted_on_its_own_is_set_up_again() -> None:
+    p = started(mock())
+    d = p.devices()[0]
+    fn = d.type.function_by_name("set_sea_level_pressure")
+    assert fn
+    p.call(d, fn, {"sea_level_pressure": 1030.0})
+    before = p.read(d, ALL_SIGNALS)
+    chip = bme280_chip(p)
+    chip.power_cycle()  # a brown-out: asleep, every setting 0, data at reset values
+    assert chip.registers[0xFA:0xFD] == (FakeBME280.SKIPPED_TP << 4).to_bytes(3, "big")
+    assert p.read(d, ALL_SIGNALS) == before
+    assert chip.registers[FakeBME280.CTRL_MEAS] & 0b11 == driver.MODE_NORMAL
     assert p.device_health(d) is None
