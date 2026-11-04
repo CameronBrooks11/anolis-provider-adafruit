@@ -80,3 +80,30 @@ def test_the_pca9685_restart_bit_clears_itself() -> None:
     chip = FakePCA9685()
     chip.write(bytes([FakePCA9685.MODE1, FakePCA9685.RESTART | FakePCA9685.AI]))
     assert chip.registers[FakePCA9685.MODE1] == FakePCA9685.AI
+
+
+def test_a_pca9685_answers_all_call_until_it_is_reset() -> None:
+    pca = FakePCA9685()
+    bus = FakeI2C({0x60: pca})
+    assert pca.all_call_address() == 0x70
+    bus.writeto(0x70, bytes([0x35, 0x17]))  # an SHTC3 wake-up command, as the PCA9685 takes it
+    assert pca.registers[0x35] == 0x17
+    bus.writeto(0x60, bytes([FakePCA9685.MODE1, 0x00]))
+    with pytest.raises(OSError):
+        bus.writeto(0x70, bytes([0x35, 0x17]))
+
+
+def test_a_read_at_all_call_is_the_wired_and_of_every_chip_answering() -> None:
+    class Fixed:
+        def write(self, data: bytes) -> None:
+            pass
+
+        def read(self, length: int) -> bytes:
+            return bytes([0xF0] * length)
+
+    pca = FakePCA9685()
+    bus = FakeI2C({0x60: pca, 0x70: Fixed()})
+    bus.writeto(0x70, bytes([FakePCA9685.MODE1]))  # the PCA9685 pointer, at MODE1 (0x11 at power on)
+    out = bytearray(1)
+    bus.readfrom_into(0x70, out)
+    assert out[0] == 0xF0 & 0x11

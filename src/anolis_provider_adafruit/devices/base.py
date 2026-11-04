@@ -18,6 +18,9 @@ class DeviceDriver:
     type: ClassVar[DeviceType]
     # Addresses the board can be strapped to. The first is the factory default.
     addresses: ClassVar[tuple[int, ...]]
+    # Connect this board before the others at start-up, whatever the config order:
+    # for a board that answers another board's address until it is set up.
+    connect_first: ClassVar[bool] = False
 
     def __init__(self, i2c: Any, address: int) -> None:
         raise NotImplementedError

@@ -12,6 +12,9 @@ A board is one module in `src/anolis_provider_adafruit/devices/`, registered in
 - **`addresses`**: the I2C addresses the board can be strapped to, factory
   default first. The config schema accepts only these.
 - **`fake()`**: a register model of the chip for mock mode, in `mock.py`.
+- **`connect_first`**, rarely: set it on a board that answers another board's
+  address until it is set up (the PCA9685's All Call address is the SHTC3's),
+  and the provider connects it before the others.
 
 ## The fake chip
 
@@ -30,6 +33,10 @@ from the runtime's safety contract:
 - **Drive the safe state when the board connects.** The constructor runs at
   start-up and again when a lost board answers, and leaves every output safe.
   Name the safe state in the module docstring.
+- **Notice a chip that restarted on its own.** A brown-out between two polls
+  fails no transfer, so the provider never sees the board lost. Check on every
+  read and call for the chip's power-on state (the Motor HAT checks the
+  PCA9685's MODE1) and run the connect sequence again when you find it.
 - **Give every `ACTUATE` function a required numeric argument for which 0 is
   safe and in range.** The runtime's zero rung (`safety.safe_state.zero_is_safe`)
   calls each actuating function with its required numeric arguments set to 0,

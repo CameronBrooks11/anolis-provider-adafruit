@@ -14,7 +14,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is its safe state, so the runtime's `zero_is_safe` rung can stop it. A
   throttle change that brakes, starts or reverses a motor brakes the bridge
   while its inputs change, so a transfer that fails partway never leaves it
-  driving harder than the old and new throttle, or the other way.
+  driving harder than the old and new throttle, or the other way. A PCA9685
+  that restarted on its own (it comes back asleep) is found on the next read
+  or call and set up and braked again, so a command after it takes effect.
+  Every Motor HAT connects before the other boards, so its reset turns off
+  the PCA9685's All Call address, `0x70`, before an SHTC3 there is opened.
 - The Sensirion SHT40/41/45 (`sht4x`) and SHTC3 (`shtc3`): temperature and
   humidity. A chip that does not answer as the sensor is refused, and a
   reading that fails its CRC reports the board unavailable and is retried,

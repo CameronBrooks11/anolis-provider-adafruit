@@ -161,7 +161,8 @@ class AdafruitProvider(Provider):
             from adafruit_extended_bus import ExtendedI2C
 
             self._bus = ExtendedI2C(self.config.get("i2c_bus", 1))
-        for device_id, slot in self._slots.items():
+        # Stable: the config order holds within each group.
+        for device_id, slot in sorted(self._slots.items(), key=lambda item: not item[1].kind.connect_first):
             self._connect(device_id, slot)
 
     def _connect(self, device_id: str, slot: _Slot) -> DeviceDriver | None:
