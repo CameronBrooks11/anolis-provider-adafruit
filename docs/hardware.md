@@ -33,7 +33,9 @@ the sensor cable into that.
 - **Address:** `0x60` from the factory. Bridging the A0 to A4 jumpers adds 1, 2,
   4, 8 or 16. Avoid `0x70`, which every PCA9685
   also answers as its All Call address; the config refuses it.
-- **Check it:** `i2cdetect -y 1` shows `60` and `70` with one HAT fitted.
+- **Check it:** `i2cdetect -y 1` shows `60` and `70` with one HAT fitted, before
+  the provider has started; once it has set the HAT up, which turns All Call
+  off, only `60`.
 
 The provider brakes all four terminals when it connects. Before the first run,
 check that each motor can turn freely and that nothing is attached that would
@@ -74,7 +76,10 @@ SHT41 and SHT45 (`sht4x`) and the SHTC3 (`shtc3`).
   board on the bus but not in the config, or one another program drives)
   keeps answering `0x70`: an SHTC3 cannot share a bus with it.
 - **Check it:** `i2cdetect -y 1` shows `44` or `70`, and the readings come back
-  near the room's: about 20 to 25 C and 30 to 60 %.
+  near the room's: about 20 to 25 C and 30 to 60 %. With a Motor HAT or other
+  PCA9685 on the bus, `70` in `i2cdetect` proves nothing about an SHTC3: it is
+  the PCA9685's All Call address until the provider sets the HAT up. Confirm an
+  SHTC3 there by starting the provider and reading its humidity.
 - **Heater:** the SHT4x has a built-in heater for driving off condensation. The
   provider never turns it on: run for long, it damages the sensor.
 
@@ -99,13 +104,27 @@ The runtime waits `hello_timeout_ms` (default 5000) for a provider's Hello
 reply, then `ready_timeout_ms` for start-up to finish. The release binary is a
 single self-extracting file, so its start-up is slower than a source install,
 and slowest on first launch after boot. Measure it on the target with only
-`python3` and the binary:
+`python3` and the binary.
+
+The script is not in the release tarball. Fetch it from the tag of the release
+you installed:
 
 ```sh
-python3 scripts/cold_start.py /opt/anolis/bin/anolis-provider-adafruit \
+curl -fLO https://raw.githubusercontent.com/CameronBrooks11/anolis-provider-adafruit/v<version>/scripts/cold_start.py
+```
+
+Each run starts the provider, which opens the bus and sets every board up: a
+Motor HAT is reset and braked. Stop the runtime first, so two providers do not
+drive the same bus, and start it again afterwards:
+
+```sh
+sudo systemctl stop anolis-runtime
+python3 cold_start.py /opt/anolis/bin/anolis-provider-adafruit \
   /opt/anolis/projects/<project>/config/provider-adafruit.yaml --runs 5
+sudo systemctl start anolis-runtime
 ```
 
 It prints the median and slowest time to the Hello reply and to the WaitReady
-reply, and exits 1 if the slowest Hello is over `--hello-budget-ms`. Set the
-runtime's `hello_timeout_ms` with room above the slowest figure.
+reply, and exits 1 if the slowest Hello is over `--hello-budget-ms` or, in
+releases after 0.1.0, a reply is not OK. Set the runtime's `hello_timeout_ms`
+with room above the slowest figure.
