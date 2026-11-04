@@ -53,6 +53,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (category `CONFIG`, idempotent, with an argument) is applied again when a
   lost board answers, so the BME280's sea-level pressure no longer resets to
   1013.25 hPa after a cable is reseated.
+- The BME280 and the Motor HAT load on a Raspberry Pi. Blinka needs `gpiod`
+  and the Pi PWM library there, which it does not declare and the drivers
+  import for type hints, so on a Pi 4 or Pi 5 neither driver loaded. The
+  provider now depends on both on Linux, and the release binary bundles them.
 
 ## [0.1.0] - 2026-11-03
 

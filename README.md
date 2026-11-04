@@ -114,7 +114,9 @@ Release binaries are built on Ubuntu 24.04 and need glibc 2.39 or newer: Debian
 
 ## Development
 
-Requires [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/).
+Requires [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/). On
+Linux, `just setup` builds the Raspberry Pi PWM library Blinka uses on a Pi,
+which has no wheel, so it also needs a C compiler.
 
 ```sh
 just setup    # uv sync --locked --extra dev
