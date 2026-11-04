@@ -12,6 +12,18 @@ all four terminals there when it connects, at start-up and when it answers again
 after being lost. Every motor function has one required numeric argument, so the
 runtime's zero rung (`safety.safe_state.zero_is_safe`) drives each one to 0.
 
+A throttle change never passes through, or stops in, a state that drives
+harder than both the old and the new throttle, or the other way. adafruit_motor
+sets a terminal's two bridge inputs in two separate I2C writes, and the state
+between them can be full forward on the way from forward to brake, or nearly
+full reverse on the way from brake to forward. So a change that brakes, starts
+or reverses first takes the bridge's PWM input to 0, which the TB6612 treats as
+short brake whatever the two inputs are (or off, with both low), then sets the
+inputs, then drives the PWM input full on again. A transfer that fails at any
+one of those writes leaves the bridge braked, or at the old or the new
+throttle. A change in the same direction writes the inputs directly: only the
+input carrying the PWM changes, so there is no state in between.
+
 The board has no command watchdog: if the provider or the runtime stops, the
 motors keep their last throttle until the board loses power.
 """
@@ -119,5 +131,13 @@ class MotorHat(DeviceDriver):
 
     def call(self, function: Function, args: Mapping[str, Any]) -> Mapping[str, Any] | None:
         motor = int(function.name.removeprefix("set_motor").removesuffix("_throttle"))
-        self._motors[motor].throttle = float(args["throttle"])
+        dc = self._motors[motor]
+        start, target = dc.throttle, float(args["throttle"])
+        if start == target or start * target > 0:
+            dc.throttle = target
+            return None
+        enable = self._pca.channels[CHANNELS[motor][0]]
+        enable.duty_cycle = 0  # short brake while the inputs change
+        dc.throttle = target
+        enable.duty_cycle = FULL
         return None

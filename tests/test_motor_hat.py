@@ -222,3 +222,63 @@ def test_a_hat_and_a_sensor_on_one_address_are_refused() -> None:
                 "devices": [{"id": "env", "type": "bme280"}, {"id": "m", "type": "motor_hat", "address": 0x77}],
             }
         )
+
+
+def level(pca: FakePCA9685, channel: int) -> float:
+    """The fraction of each PWM period a channel is high, from its registers."""
+    on, off = pca.duty(channel)
+    if on & 0x1000:
+        return 1.0
+    if off & 0x1000:
+        return 0.0
+    assert on == 0, "every channel this provider writes starts its period high"
+    return off / 4096
+
+
+def drive(pca: FakePCA9685, motor: int) -> float:
+    """What the TB6612 drives a terminal at, from -1 (full reverse) to 1.
+
+    Every channel goes high at the start of the period, so each input is high
+    from 0 until its level. The bridge drives forward while the PWM input and
+    the forward input are high and the reverse input is low, and reverse the
+    other way about. Any other combination is short brake (an input pair H/H,
+    or the PWM input low) or off (both inputs low): no drive."""
+    enable, forward, reverse = (level(pca, c) for c in CHANNELS[motor])
+    return max(0.0, min(enable, forward) - reverse) - max(0.0, min(enable, reverse) - forward)
+
+
+RUNAWAY_CASES = [(0.0, 0.1), (0.0, -0.1), (0.3, 0.0), (-0.3, 0.0), (0.5, -0.5), (-0.5, 0.5)]
+# The same direction is written without the brake step; it must be just as safe.
+SAME_DIRECTION_CASES = [(0.3, 0.5), (0.5, 0.3), (-0.3, -0.5), (0.4, 0.4), (0.0, 0.0)]
+
+
+@pytest.mark.parametrize(("start", "target"), RUNAWAY_CASES + SAME_DIRECTION_CASES)
+def test_a_write_that_fails_partway_never_leaves_the_bridge_driving_harder_or_backwards(
+    start: float, target: float
+) -> None:
+    def at_start() -> tuple[AdafruitProvider, FakeI2C, float]:
+        p = started()
+        throttle(p, 1, start)
+        fake = p._bus
+        assert isinstance(fake, FakeI2C)
+        return p, fake, drive(chip(p), 1)
+
+    p, fake, start_drive = at_start()
+    before = fake.writes
+    throttle(p, 1, target)
+    writes = fake.writes - before
+    target_drive = drive(chip(p), 1)
+    assert target_drive == pytest.approx(target, abs=1 / 4096)
+    assert writes >= 2
+
+    for k in range(writes):
+        p, fake, _ = at_start()
+        fake.fail_write = fake.writes + k
+        with pytest.raises(ProviderError) as err:
+            throttle(p, 1, target)
+        assert err.value.code is StatusCode.UNAVAILABLE
+        left = drive(chip(p), 1)
+        allowed = [0.0, start_drive, target_drive]
+        assert any(left == pytest.approx(a, abs=1 / 4096) for a in allowed), (
+            f"{start} -> {target}, write {k} of {writes} failed: bridge left driving at {left:+.4f}"
+        )

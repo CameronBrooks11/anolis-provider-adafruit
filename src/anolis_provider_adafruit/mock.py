@@ -232,6 +232,10 @@ class FakeI2C:
         self.chips = dict(chips)
         self._locked = False
         self.fail = False  # set to make every transfer fail, as a disconnected bus does
+        self.writes = 0  # writes so far, register-pointer writes before a read included
+        # Set to make the write with this index fail, and only that one: a
+        # transfer that breaks partway through a sequence of writes.
+        self.fail_write: int | None = None
 
     def _chip(self, address: int) -> FakeChip:
         if self.fail:
@@ -254,6 +258,9 @@ class FakeI2C:
         return sorted(self.chips)
 
     def writeto(self, address: int, buffer: bytes, *, start: int = 0, end: int | None = None) -> None:
+        index, self.writes = self.writes, self.writes + 1
+        if index == self.fail_write:
+            raise OSError(5, "Input/output error")
         self._chip(address).write(bytes(buffer[start:end]))
 
     def readfrom_into(self, address: int, buffer: bytearray, *, start: int = 0, end: int | None = None) -> None:
