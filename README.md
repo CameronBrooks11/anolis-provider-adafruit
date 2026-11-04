@@ -54,8 +54,13 @@ schema: `anolis-provider-adafruit --config-schema`.
 A board that does not answer is listed anyway and reported `UNREACHABLE`; reads
 and calls fail with `UNAVAILABLE` and retry the board each time, so reseating a
 cable recovers it without a restart. Settings made since start-up, such as the
-BME280's sea-level pressure, are applied again when it answers. If the bus
-itself does not open, the provider reports a fault and every board
+BME280's sea-level pressure, are applied again when it answers.
+
+At start-up the provider runs the same checks as `--check-host`. If
+`/dev/i2c-<n>` is missing, or the user it runs as cannot open it, it stays up
+but not ready: it opens no bus, lists no devices, and `WaitReady` reports
+`host_check=unmet` with the reason in `host_unmet`. If the device node is there
+but the bus does not open, the provider reports a fault and every board
 `UNREACHABLE` with the bus error.
 
 ## Motors and the software stop
