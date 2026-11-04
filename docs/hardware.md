@@ -154,6 +154,8 @@ sudo systemctl start anolis-runtime
 ```
 
 It prints the median and slowest time to the Hello reply and to the WaitReady
-reply, and exits 1 if the slowest Hello is over `--hello-budget-ms` or, in
-releases after 0.1.0, a reply is not OK. Set the runtime's `hello_timeout_ms`
-with room above the slowest figure.
+reply, and exits 1 if the slowest Hello is over `--hello-budget-ms`. In
+releases after 0.1.0 it also exits 1, without a figure, when a reply is not OK
+or the provider reports in `WaitReady` that it is not ready (its start failed,
+or a host requirement is unmet). Set the runtime's `hello_timeout_ms` with room
+above the slowest figure.
