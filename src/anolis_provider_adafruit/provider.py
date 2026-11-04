@@ -138,21 +138,31 @@ class AdafruitProvider(Provider):
     conformance_level = 2
     config_schema = CONFIG_SCHEMA
 
-    def __init__(self, config: Mapping[str, Any]) -> None:
-        super().__init__(config)
-        self._devices: list[Device] = []
-        self._slots: dict[str, _Slot] = {}
+    @classmethod
+    def check_config(cls, config: Mapping[str, Any]) -> None:
+        # What the schema cannot say. The SDK calls this for --check-config,
+        # --check-host and before construction; __init__ calls it too.
+        ids: set[str] = set()
         claimed: dict[int, str] = {}
         for entry in config["devices"]:
-            kind = KINDS[entry["type"]]
-            address = entry.get("address", kind.addresses[0])
-            if entry["id"] in self._slots:
+            address = entry.get("address", KINDS[entry["type"]].addresses[0])
+            if entry["id"] in ids:
                 raise ValueError(f"device id {entry['id']!r} is configured twice")
             if address in claimed:
                 raise ValueError(
                     f"I2C address {address:#04x} is configured for both {claimed[address]!r} and {entry['id']!r}"
                 )
+            ids.add(entry["id"])
             claimed[address] = entry["id"]
+
+    def __init__(self, config: Mapping[str, Any]) -> None:
+        super().__init__(config)
+        self.check_config(config)
+        self._devices: list[Device] = []
+        self._slots: dict[str, _Slot] = {}
+        for entry in config["devices"]:
+            kind = KINDS[entry["type"]]
+            address = entry.get("address", kind.addresses[0])
             self._slots[entry["id"]] = _Slot(kind, address)
             self._devices.append(
                 Device(

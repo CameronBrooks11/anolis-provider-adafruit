@@ -49,7 +49,9 @@ devices:
 
 `mock: true` replaces the bus with a simulated one holding a register model of
 each configured board. Adafruit's driver runs unchanged against it. The full
-schema: `anolis-provider-adafruit --config-schema`.
+schema: `anolis-provider-adafruit --config-schema`. Beyond the schema,
+`--check-config` refuses two devices with the same `id` or on the same address,
+as the provider does at start.
 
 A board that does not answer is listed anyway and reported `UNREACHABLE`; reads
 and calls fail with `UNAVAILABLE` and retry the board each time, so reseating a
