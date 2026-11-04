@@ -58,6 +58,18 @@ curl -s -H "$H" -X POST http://127.0.0.1:8080/v0/estop/clear
 The motor should spin at the call, stop at the stop, and read back 0. Function
 ids follow the terminals: `set_motor1_throttle` is 1, up to 4.
 
+## The SHT4x and SHTC3
+
+Two Sensirion temperature and humidity sensors, on STEMMA QT boards: the SHT40,
+SHT41 and SHT45 (`sht4x`) and the SHTC3 (`shtc3`).
+
+- **Address:** the SHT4x boards answer at `0x44`, the SHTC3 at `0x70`. Neither
+  has an address jumper, so one of each per bus.
+- **Check it:** `i2cdetect -y 1` shows `44` or `70`, and the readings come back
+  near the room's: about 20 to 25 C and 30 to 60 %.
+- **Heater:** the SHT4x has a built-in heater for driving off condensation. The
+  provider never turns it on: run for long, it damages the sensor.
+
 ## Preparing the host
 
 On Raspberry Pi OS:

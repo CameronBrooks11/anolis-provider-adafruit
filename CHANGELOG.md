@@ -12,8 +12,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   each set by `set_motor<n>_throttle` and read back from the board's PWM
   controller. The board brakes every terminal when it connects, and throttle 0
   is its safe state, so the runtime's `zero_is_safe` rung can stop it.
+- The Sensirion SHT40/41/45 (`sht4x`) and SHTC3 (`shtc3`): temperature and
+  humidity. A chip that does not answer as the sensor is refused, and a
+  reading that fails its CRC reports the board unavailable and is retried,
+  where the SHTC3 driver would return no value without an error.
 - Mock mode models the PCA9685 PWM controller, including auto-increment,
-  sleep-only prescale writes and the self-clearing restart bit.
+  sleep-only prescale writes and the self-clearing restart bit, and the
+  SHT4x and SHTC3, including the SHTC3's sleep between readings.
 
 ## [0.1.0] - 2026-11-03
 

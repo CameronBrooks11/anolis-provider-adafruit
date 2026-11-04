@@ -18,6 +18,8 @@ which they depend on.
 | `type` | Board | Driver | Addresses |
 | --- | --- | --- | --- |
 | `bme280` | BME280 temperature, humidity and pressure (STEMMA QT) | `adafruit-circuitpython-bme280` | `0x77` (default), `0x76` |
+| `sht4x` | SHT40, SHT41 or SHT45 temperature and humidity (STEMMA QT) | `adafruit-circuitpython-sht4x` | `0x44` |
+| `shtc3` | SHTC3 temperature and humidity (STEMMA QT) | `adafruit-circuitpython-shtc3` | `0x70` (fixed) |
 | `motor_hat` | DC & Stepper Motor HAT for Raspberry Pi: four DC motors | `adafruit-circuitpython-pca9685`, `adafruit-circuitpython-motor` | `0x60` (default) to `0x7F`, except `0x70` |
 
 All boards share one Linux I2C bus (`i2c_bus`, default 1: the Raspberry Pi
