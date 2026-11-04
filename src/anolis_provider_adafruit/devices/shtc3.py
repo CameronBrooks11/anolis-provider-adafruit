@@ -19,7 +19,7 @@ from typing import Any
 from anolis_provider_sdk import DeviceType, Function, Signal, ValueType
 
 from ..mock import FakeSHTC3
-from .base import DeviceDriver
+from .base import DeviceDriver, NotAnswering, nothing_at
 
 TYPE = DeviceType(
     id="shtc3",
@@ -37,7 +37,16 @@ class SHTC3(DeviceDriver):
     def __init__(self, i2c: Any, address: int) -> None:
         import adafruit_shtc3
 
-        self._sensor = adafruit_shtc3.SHTC3(i2c)
+        try:
+            self._sensor = adafruit_shtc3.SHTC3(i2c)
+        except ValueError as err:
+            if not nothing_at(err):
+                raise
+            raise NotAnswering(f"nothing answers at {address:#04x}") from err
+        except RuntimeError as err:
+            if not str(err).startswith("Failed to find an SHTC3"):
+                raise
+            raise NotAnswering(f"no SHTC3 at {address:#04x}: {err}") from err
 
     @staticmethod
     def fake() -> FakeSHTC3:

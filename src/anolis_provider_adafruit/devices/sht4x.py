@@ -23,7 +23,7 @@ from typing import Any
 from anolis_provider_sdk import DeviceType, Function, Signal, ValueType
 
 from ..mock import FakeSHT4x
-from .base import DeviceDriver
+from .base import DeviceDriver, NotAnswering, nothing_at
 
 TYPE = DeviceType(
     id="sht4x",
@@ -41,12 +41,19 @@ class SHT4x(DeviceDriver):
     def __init__(self, i2c: Any, address: int) -> None:
         import adafruit_sht4x
 
-        self._sensor = adafruit_sht4x.SHT4x(i2c, address)
+        try:
+            self._sensor = adafruit_sht4x.SHT4x(i2c, address)
+        except ValueError as err:
+            if not nothing_at(err):
+                raise
+            raise NotAnswering(f"nothing answers at {address:#04x}") from err
         self._sensor.mode = adafruit_sht4x.Mode.NOHEAT_HIGHPRECISION
         try:
             self._sensor.serial_number  # noqa: B018 - read for its CRC check
         except RuntimeError as err:
-            raise ValueError(f"no SHT4x at {address:#04x}: its serial number did not read back intact") from err
+            if str(err) != "Invalid CRC calculated":
+                raise
+            raise NotAnswering(f"no SHT4x at {address:#04x}: its serial number did not read back intact") from err
 
     @staticmethod
     def fake() -> FakeSHT4x:

@@ -232,3 +232,120 @@ def test_a_bme280_that_restarted_on_its_own_is_set_up_again() -> None:
     assert p.read(d, ALL_SIGNALS) == before
     assert chip.registers[FakeBME280.CTRL_MEAS] & 0b11 == driver.MODE_NORMAL
     assert p.device_health(d) is None
+
+
+def lose_and_recover(p: AdafruitProvider, d: Any) -> None:
+    bus(p).fail = True
+    with pytest.raises(ProviderError):
+        p.read(d, ["temperature"])
+    bus(p).fail = False
+
+
+def test_the_sea_level_pressure_survives_a_reconnect() -> None:
+    p = started(mock())
+    d = p.devices()[0]
+    fn = d.type.function_by_name("set_sea_level_pressure")
+    assert fn
+    p.call(d, fn, {"sea_level_pressure": 1030.0})
+    before = p.read(d, ["sea_level_pressure", "altitude"])
+    lose_and_recover(p, d)
+    assert p.read(d, ["sea_level_pressure", "altitude"]) == before
+
+
+def test_a_setting_that_fails_to_apply_again_leaves_the_board_lost() -> None:
+    p = started(mock())
+    d = p.devices()[0]
+    fn = d.type.function_by_name("set_sea_level_pressure")
+    assert fn
+    p.call(d, fn, {"sea_level_pressure": 1030.0})
+    lose_and_recover(p, d)
+    original = BME280.call
+
+    def failing(self: BME280, function: Any, args: Any) -> Any:
+        raise OSError(5, "Input/output error")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(BME280, "call", failing)
+        with pytest.raises(ProviderError) as err:
+            p.read(d, ["temperature"])
+    assert err.value.code is StatusCode.UNAVAILABLE
+    health = p.device_health(d)
+    assert health and health.state is DeviceState.UNREACHABLE
+    assert BME280.call is original
+    assert p.read(d, ["sea_level_pressure"]) == {"sea_level_pressure": 1030.0}
+
+
+def test_settings_are_applied_again_in_the_order_they_were_last_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    p = started(mock())
+    d = p.devices()[0]
+    fn = d.type.function_by_name("set_sea_level_pressure")
+    reset = d.type.function_by_name("soft_reset")
+    assert fn and reset
+    p.call(d, fn, {"sea_level_pressure": 1000.0})
+    p.call(d, reset, {})  # no argument: not a setting
+    p.call(d, fn, {"sea_level_pressure": 1030.0})
+    calls: list[tuple[str, dict[str, Any]]] = []
+    original = BME280.call
+
+    def recording(self: BME280, function: Any, args: Any) -> Any:
+        calls.append((function.name, dict(args)))
+        return original(self, function, args)
+
+    lose_and_recover(p, d)
+    monkeypatch.setattr(BME280, "call", recording)
+    p.read(d, ["temperature"])
+    assert calls == [("set_sea_level_pressure", {"sea_level_pressure": 1030.0})]
+
+
+def test_a_bme280_that_comes_back_as_another_chip_is_unreachable() -> None:
+    p = started(mock())
+    d = p.devices()[0]
+    chip = bme280_chip(p)
+    chip.power_cycle()
+    chip.registers[FakeBME280.CHIP_ID_REG] = 0x58  # a BMP280: the driver's id check refuses it
+    with pytest.raises(ProviderError) as err:
+        p.read(d, ["temperature"])
+    assert err.value.code is StatusCode.UNAVAILABLE
+    health = p.device_health(d)
+    assert health and health.state is DeviceState.UNREACHABLE
+    assert "no BME280" in health.message
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("PCA9685 cannot output at the given frequency"),
+        RuntimeError("The platform library 'gpiod' was not found"),
+    ],
+)
+def test_a_driver_error_that_does_not_mean_an_absent_board_fails_start(error: Exception) -> None:
+    p = AdafruitProvider(mock())
+
+    def broken(self: Any, i2c: Any, address: int) -> None:
+        raise error
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(BME280, "__init__", broken)
+        with pytest.raises(type(error)):
+            p.start(0.0)
+
+
+def test_a_motor_hat_frequency_the_chip_cannot_take_is_a_provider_fault(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("anolis_provider_adafruit.devices.motor_hat.PWM_FREQUENCY_HZ", 1e6)
+    p = AdafruitProvider(mock({"id": "m", "type": "motor_hat"}))
+    with pytest.raises(ValueError, match="cannot output"):
+        p.start(0.0)
+
+
+def test_every_device_is_unreachable_when_the_bus_never_opened(monkeypatch: pytest.MonkeyPatch) -> None:
+    p = AdafruitProvider(
+        {"i2c_bus": 99, "devices": [{"id": "env0", "type": "bme280"}, {"id": "m", "type": "motor_hat"}]}
+    )
+    with pytest.raises(ValueError, match="/dev/i2c-99"):
+        p.start(0.0)
+    for d in p.devices():
+        health = p.device_health(d)
+        assert health and health.state is DeviceState.UNREACHABLE
+        assert "/dev/i2c-99" in health.message
+    assert p.health().state is HealthState.FAULT
+    assert "/dev/i2c-99" in p.health().message

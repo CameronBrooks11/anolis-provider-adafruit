@@ -19,7 +19,7 @@ from typing import Any
 from anolis_provider_sdk import Arg, Category, DeviceType, Function, Signal, ValueType
 
 from ..mock import FakeBME280
-from .base import DeviceDriver
+from .base import DeviceDriver, NotAnswering, nothing_at
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +92,16 @@ class BME280(DeviceDriver):
         import adafruit_bme280.basic as driver
 
         # The driver's constructor checks the chip id and soft-resets the chip.
-        sensor = driver.Adafruit_BME280_I2C(self._i2c, self._address)
+        try:
+            sensor = driver.Adafruit_BME280_I2C(self._i2c, self._address)
+        except ValueError as err:
+            if not nothing_at(err):
+                raise
+            raise NotAnswering(f"nothing answers at {self._address:#04x}") from err
+        except RuntimeError as err:
+            if not str(err).startswith("Failed to find BME280"):
+                raise
+            raise NotAnswering(f"no BME280 at {self._address:#04x}: {err}") from err
         # Normal mode: the chip measures continuously, so a read fetches the
         # latest result instead of triggering and waiting for a conversion.
         sensor.mode = driver.MODE_NORMAL

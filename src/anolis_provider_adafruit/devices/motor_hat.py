@@ -49,7 +49,7 @@ from typing import Any
 from anolis_provider_sdk import Arg, Category, DeviceType, Function, Quality, Reading, Signal, ValueType
 
 from ..mock import FakePCA9685
-from .base import DeviceDriver
+from .base import DeviceDriver, NotAnswering, nothing_at
 
 log = logging.getLogger(__name__)
 
@@ -125,7 +125,12 @@ class MotorHat(DeviceDriver):
 
         self._address = address
         # The constructor resets the chip: MODE1 = 0, awake with All Call off.
-        self._pca = PCA9685(i2c, address=address)
+        try:
+            self._pca = PCA9685(i2c, address=address)
+        except ValueError as err:
+            if not nothing_at(err):
+                raise
+            raise NotAnswering(f"nothing answers at {address:#04x}") from err
         self._setup()
 
     def _setup(self) -> None:

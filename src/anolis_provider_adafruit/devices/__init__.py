@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .base import DeviceDriver
+from .base import DeviceDriver, NotAnswering
 from .bme280 import BME280
 from .motor_hat import MotorHat
 from .sht4x import SHT4x
@@ -15,4 +15,4 @@ KINDS: dict[str, type[DeviceDriver]] = {
     "shtc3": SHTC3,
 }
 
-__all__ = ["KINDS", "DeviceDriver"]
+__all__ = ["KINDS", "DeviceDriver", "NotAnswering"]
