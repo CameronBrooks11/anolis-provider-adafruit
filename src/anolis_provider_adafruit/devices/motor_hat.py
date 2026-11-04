@@ -178,10 +178,19 @@ class MotorHat(DeviceDriver):
         return None
 
     def stop(self) -> None:
-        """Brake every terminal: the safe state the board takes at connect."""
+        """Brake every terminal: the safe state the board takes at connect.
+        Every terminal is tried even if one fails, so a transfer that fails on
+        one does not leave the others running; the first error is raised once
+        all four have been tried."""
         self._check_restarted()
+        error: Exception | None = None
         for motor in CHANNELS:
-            self._set(motor, 0.0)
+            try:
+                self._set(motor, 0.0)
+            except Exception as err:
+                error = error or err
+        if error is not None:
+            raise error
 
     def _set(self, motor: int, target: float) -> None:
         dc = self._motors[motor]

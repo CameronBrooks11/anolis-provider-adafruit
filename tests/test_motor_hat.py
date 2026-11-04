@@ -406,3 +406,24 @@ def test_a_write_that_fails_partway_through_stop_never_leaves_the_bridge_driving
         assert any(left == pytest.approx(a, abs=1 / 4096) for a in (0.0, start_drive)), (
             f"stop from {start}, write {k} of {writes} failed: bridge left driving at {left:+.4f}"
         )
+
+
+def test_a_terminal_that_fails_to_brake_at_stop_does_not_leave_the_others_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    p = started()
+    throttle(p, 1, 0.5)
+    throttle(p, 3, -0.5)
+    hat = p._slots[p.devices()[0].id].driver
+    assert isinstance(hat, MotorHat)
+    real_set = hat._set
+
+    def failing_set(motor: int, target: float) -> None:
+        if motor == 1:
+            raise OSError(5, "Input/output error")
+        real_set(motor, target)
+
+    monkeypatch.setattr(hat, "_set", failing_set)
+    with pytest.raises(OSError):
+        hat.stop()
+    assert drive(chip(p), 3) == 0.0
